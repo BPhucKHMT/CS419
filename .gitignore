@@ -1,0 +1,15 @@
+# Ignore everything by default
+*
+
+# Keep this .gitignore file
+!.gitignore
+
+# Keep required folders
+!Cranfield/
+!Cranfield/**
+!TEST/
+!TEST/**
+
+# Keep required notebooks
+!project_new.ipynb
+!term_selection_baseline.ipynb
