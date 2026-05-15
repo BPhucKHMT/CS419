@@ -63,7 +63,7 @@ $$\text{score}(d,q) = \sum_{t \in q} \ln\!\left(\frac{N - df_t + 0.5}{df_t + 0.5
 
 | Mô hình | MAP | P@20 | Recall@20 | Cấu hình |
 |---------|:---:|:----:|:---------:|----------|
-| **VSM (TF-IDF)** | 0.2588 | 0.1573 | 0.5048 | `ntc.ntc` weighting |
+| **VSM (TF-IDF)** | 0.2588 | 0.1573 | 0.5048 | TF-IDF chuẩn hóa, Cosine Similarity |
 | **Okapi BM25** | **0.2804** | **0.1622** | **0.5182** | `k1=2.0`, `b=0.6` |
 
 **Nhận xét:**
