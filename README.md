@@ -63,13 +63,13 @@ $$\text{score}(d,q) = \sum_{t \in q} \ln\!\left(\frac{N - df_t + 0.5}{df_t + 0.5
 
 | Mô hình | MAP | P@20 | Recall@20 | Cấu hình |
 |---------|:---:|:----:|:---------:|----------|
-| **VSM (TF-IDF)** | 0.2588 | 0.1573 | 0.5048 | TF-IDF chuẩn hóa, Cosine Similarity |
-| **Okapi BM25** | **0.2804** | **0.1622** | **0.5182** | `k1=2.0`, `b=0.6` |
+| **VSM (TF-IDF)** | 0.2864 | 0.1573 | 0.5048 | TF-IDF chuẩn hóa, Cosine Similarity |
+| **Okapi BM25** | **0.3060** | **0.1622** | **0.5182** | `k1=2.0`, `b=0.6` |
 
 **Nhận xét:**
-- **BM25** cho MAP và Recall@20 vượt trội nhất quán so với VSM.
+- **BM25** cho MAP vượt trội nhất quán so với VSM (MAP 0.3060 vs 0.2864).
 - **Recall@20** rất cao (>0.50) chứng tỏ cả 2 mô hình đều tìm được hơn 50% tài liệu liên quan trong Top 20 kết quả.
-- **Tiền xử lý:** Việc đổi sang `SnowballStemmer` và xử lý dấu gạch ngang (`-`) giúp MAP của BM25 tăng từ 0.2630 lên 0.2804.
+- **Tiền xử lý:** Việc đổi sang `SnowballStemmer` và xử lý dấu gạch ngang (`-`) giúp MAP của BM25 tăng đáng kể.
 
 ## 5. Các File CSV Xuất Ra
 Notebook tự động sinh các file CSV để hỗ trợ phân tích và báo cáo:
