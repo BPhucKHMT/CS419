@@ -59,19 +59,64 @@ $$\text{score}(d,q) = \sum_{t \in q} \ln\!\left(\frac{N - df_t + 0.5}{df_t + 0.5
 - `avgdl ≈ 91` token/tài liệu
 
 ## 4. Kết quả Đánh giá (Final Results)
-Đánh giá trên toàn bộ 225 Queries, Top 20 kết quả được truy hồi (P@20, Recall@20):
+Đánh giá trên toàn bộ 225 Queries. MAP tính trên top-100, P@20 và Recall@20 trên top-20:
 
-| Mô hình | MAP | P@20 | Recall@20 | Cấu hình |
-|---------|:---:|:----:|:---------:|----------|
-| **VSM (TF-IDF)** | 0.2864 | 0.1573 | 0.5048 | TF-IDF chuẩn hóa, Cosine Similarity |
-| **Okapi BM25** | **0.3060** | **0.1622** | **0.5182** | `k1=2.0`, `b=0.6` |
+| Mô hình | MAP@100 | P@20 | Recall@20 |
+|---------|:-------:|:----:|:---------:|
+| VSM (TF-IDF) Baseline | 0.2864 | 0.1573 | 0.5048 |
+| **VSM + Cluster Reranking** | **0.2973** | **0.1660** | **0.5305** |
+| BM25 Baseline | 0.3060 | 0.1622 | 0.5182 |
+| **BM25 + Cluster Reranking** | **0.3219** | **0.1720** | **0.5500** |
 
 **Nhận xét:**
-- **BM25** cho MAP vượt trội nhất quán so với VSM (MAP 0.3060 vs 0.2864).
-- **Recall@20** rất cao (>0.50) chứng tỏ cả 2 mô hình đều tìm được hơn 50% tài liệu liên quan trong Top 20 kết quả.
-- **Tiền xử lý:** Việc đổi sang `SnowballStemmer` và xử lý dấu gạch ngang (`-`) giúp MAP của BM25 tăng đáng kể.
+- Cluster Reranking cải thiện **tất cả 3 metrics** cho cả VSM và BM25.
+- BM25 + Cluster đạt MAP@100 = **0.3219** (+5.2% so với BM25 baseline).
+- Recall@20 tăng từ 0.5182 lên **0.5500** — tìm được thêm ~3% tài liệu liên quan trong top-20.
 
-## 5. Các File CSV Xuất Ra
+## 5. Cluster-based Reranking
+
+### Ý tưởng
+Sau khi retrieval trả về top-K docs, các tài liệu cùng chủ đề thường cụm lại trong cùng cluster. Ta dùng thông tin cluster để **boost nhẹ** điểm của các tài liệu thuộc cluster được top-docs vote nhiều nhất.
+
+### Pipeline
+
+```text
+Query
+  │
+  ▼
+[1] Retrieve top-100 docs (BM25 hoặc VSM)
+  │
+  ▼
+[2] Xác định cluster quan trọng
+    - Lấy top-20 docs từ kết quả retrieval
+    - Đếm xem các docs này thuộc cluster nào (vote)
+    - Normalize cluster score = count / max_count ∈ [0, 1]
+  │
+  ▼
+[3] Hybrid reranking
+    final_score = α × norm(retrieval_score) + (1-α) × cluster_score
+    với α = 0.85 (giữ 85% tín hiệu retrieval gốc)
+  │
+  ▼
+Top-20 kết quả sau reranking
+```
+
+### Cấu hình tối ưu
+
+| Tham số | Giá trị | Ý nghĩa |
+|---------|---------|---------|
+| `n_components` | 100 | SVD giảm chiều TF-IDF → 100D LSA space |
+| `N_CLUSTERS` | 200 | ~7 docs/cluster → micro-topic precision cao |
+| `retrieve_k` | 100 | Số docs retrieval ban đầu để rerank |
+| `top_cluster_docs` | 20 | Số docs đầu dùng để vote cluster |
+| `alpha` | 0.85 | Trọng số giữ ranking gốc (không override hoàn toàn) |
+
+### Tại sao N_CLUSTERS = 200 hiệu quả?
+Cluster nhỏ (~7 docs) tạo **micro-topic**: các tài liệu trong cùng cluster cực kỳ gần nhau về ngữ nghĩa. Khi top-docs vote vào cluster này, boost điểm cho các tài liệu cùng micro-topic → tăng topical coverage mà không làm nhiễu ranking chất lượng cao của BM25/VSM.
+
+
+
+## 6. Các File CSV Xuất Ra
 Notebook tự động sinh các file CSV để hỗ trợ phân tích và báo cáo:
 
 | File | Nội dung |
@@ -82,7 +127,7 @@ Notebook tự động sinh các file CSV để hỗ trợ phân tích và báo c
 | `query_bm25.csv` | Phân rã điểm BM25 theo từng term cho Top 20 tài liệu của 225 queries — gồm `TF(f)`, `IDF_BM25`, `Numerator`, `Denominator`, `Term_BM25_Score` |
 | `evaluation_per_query.csv` | Điểm AP, P@20, Recall@20 của **từng query riêng lẻ** cho cả VSM và BM25 — dùng để phân tích best/worst case |
 
-## 6. Hướng dẫn sử dụng
+## 7. Hướng dẫn sử dụng
 
 ```bash
 # Cài đặt môi trường
