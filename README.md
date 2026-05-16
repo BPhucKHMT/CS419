@@ -59,19 +59,20 @@ $$\text{score}(d,q) = \sum_{t \in q} \ln\!\left(\frac{N - df_t + 0.5}{df_t + 0.5
 - `avgdl ≈ 91` token/tài liệu
 
 ## 4. Kết quả Đánh giá (Final Results)
-Đánh giá trên toàn bộ 225 Queries. MAP tính trên top-100, P@20 và Recall@20 trên top-20:
+Đánh giá trên toàn bộ 225 Queries. MAP tính trên toàn bộ 1400 docs, P@20 và Recall@20 trên top-20:
 
-| Mô hình | MAP@100 | P@20 | Recall@20 |
+| Mô hình | MAP | P@20 | Recall@20 |
 |---------|:-------:|:----:|:---------:|
-| VSM (TF-IDF) Baseline | 0.2864 | 0.1573 | 0.5048 |
-| **VSM + Cluster Reranking** | **0.2973** | **0.1660** | **0.5305** |
-| BM25 Baseline | 0.3060 | 0.1622 | 0.5182 |
-| **BM25 + Cluster Reranking** | **0.3219** | **0.1720** | **0.5500** |
+| VSM (TF-IDF) Baseline | 0.2923 | 0.1573 | 0.5048 |
+| **VSM + Cluster Reranking** | **0.3045** | **0.1660** | **0.5305** |
+| BM25 Baseline | 0.3118 | 0.1622 | 0.5182 |
+| **BM25 + Cluster Reranking** | **0.3297** | **0.1720** | **0.5500** |
 
 **Nhận xét:**
 - Cluster Reranking cải thiện **tất cả 3 metrics** cho cả VSM và BM25.
-- BM25 + Cluster đạt MAP@100 = **0.3219** (+5.2% so với BM25 baseline).
+- BM25 + Cluster đạt MAP = **0.3297** (+5.7% so với BM25 baseline).
 - Recall@20 tăng từ 0.5182 lên **0.5500** — tìm được thêm ~3% tài liệu liên quan trong top-20.
+
 
 ## 5. Cluster-based Reranking
 
@@ -84,7 +85,7 @@ Sau khi retrieval trả về top-K docs, các tài liệu cùng chủ đề thư
 Query
   │
   ▼
-[1] Retrieve top-100 docs (BM25 hoặc VSM)
+[1] Retrieve toàn bộ 1400 docs (BM25 hoặc VSM)
   │
   ▼
 [2] Xác định cluster quan trọng
@@ -98,7 +99,10 @@ Query
     với α = 0.85 (giữ 85% tín hiệu retrieval gốc)
   │
   ▼
-Top-20 kết quả sau reranking
+Top-1400 kết quả sau reranking
+  │
+  ├─ MAP   → tính trên toàn bộ 1400 docs
+  └─ P@20, Recall@20 → chỉ xét top-20
 ```
 
 ### Cấu hình tối ưu
@@ -107,7 +111,7 @@ Top-20 kết quả sau reranking
 |---------|---------|---------|
 | `n_components` | 100 | SVD giảm chiều TF-IDF → 100D LSA space |
 | `N_CLUSTERS` | 200 | ~7 docs/cluster → micro-topic precision cao |
-| `retrieve_k` | 100 | Số docs retrieval ban đầu để rerank |
+| `retrieve_k` | 1400 | Retrieve toàn bộ collection để MAP chính xác |
 | `top_cluster_docs` | 20 | Số docs đầu dùng để vote cluster |
 | `alpha` | 0.85 | Trọng số giữ ranking gốc (không override hoàn toàn) |
 
