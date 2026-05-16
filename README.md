@@ -77,42 +77,66 @@ $$\text{score}(d,q) = \sum_{t \in q} \ln\!\left(\frac{N - df_t + 0.5}{df_t + 0.5
 ## 5. Cluster-based Reranking
 
 ### Ý tưởng
-Sau khi retrieval trả về top-K docs, các tài liệu cùng chủ đề thường cụm lại trong cùng cluster. Ta dùng thông tin cluster để **boost nhẹ** điểm của các tài liệu thuộc cluster được top-docs vote nhiều nhất.
+Sau khi retrieval trả về toàn bộ ranking, các tài liệu cùng chủ đề thường cụm lại trong cùng cluster. Ta dùng thông tin cluster để **boost nhẹ** điểm của các tài liệu thuộc cluster được top-docs vote nhiều nhất, giúp tài liệu cùng micro-topic nhưng match term yếu hơn được nâng rank.
 
 ### Pipeline
 
 ```text
+══════════════════════════════════════════
+  OFFLINE (chạy 1 lần khi khởi động)
+══════════════════════════════════════════
+
+1400 docs
+  │
+  ▼
+[A] Xây dựng TF-IDF matrix (1400 × vocab_size)
+  │
+  ▼
+[B] Giảm chiều bằng TruncatedSVD
+    TF-IDF → LSA 100D  (normalize L2)
+  │
+  ▼
+[C] KMeans clustering (N=200 clusters)
+    → doc_to_cluster[doc_id]     = cluster_id
+    → cluster_to_docs[cluster_id] = [doc_ids...]
+
+══════════════════════════════════════════
+  ONLINE (mỗi query)
+══════════════════════════════════════════
+
 Query
   │
   ▼
 [1] Retrieve toàn bộ 1400 docs (BM25 hoặc VSM)
+    → ranked list: [(doc_id, score), ...]
   │
   ▼
 [2] Xác định cluster quan trọng
-    - Lấy top-20 docs từ kết quả retrieval
-    - Đếm xem các docs này thuộc cluster nào (vote)
-    - Normalize cluster score = count / max_count ∈ [0, 1]
+    - Lấy top-20 docs từ đầu ranked list
+    - Vote: đếm mỗi cluster_id xuất hiện bao nhiêu lần
+    - cluster_score[c] = count[c] / max_count  ∈ [0, 1]
   │
   ▼
-[3] Hybrid reranking
-    final_score = α × norm(retrieval_score) + (1-α) × cluster_score
-    với α = 0.85 (giữ 85% tín hiệu retrieval gốc)
+[3] Hybrid reranking (toàn bộ 1400 docs)
+    norm_score[d]  = retrieval_score[d] / max_retrieval_score
+    final_score[d] = α × norm_score[d] + (1-α) × cluster_score[cluster(d)]
+    với α = 0.85
   │
   ▼
-Top-1400 kết quả sau reranking
+Ranked list 1400 docs sau reranking
   │
-  ├─ MAP   → tính trên toàn bộ 1400 docs
-  └─ P@20, Recall@20 → chỉ xét top-20
+  ├─ MAP        → tính trên toàn bộ 1400 docs
+  └─ P@20, R@20 → chỉ xét top-20
 ```
 
 ### Cấu hình tối ưu
 
 | Tham số | Giá trị | Ý nghĩa |
-|---------|---------|---------|
+|---------|---------|-------|
 | `n_components` | 100 | SVD giảm chiều TF-IDF → 100D LSA space |
 | `N_CLUSTERS` | 200 | ~7 docs/cluster → micro-topic precision cao |
 | `retrieve_k` | 1400 | Retrieve toàn bộ collection để MAP chính xác |
-| `top_cluster_docs` | 20 | Số docs đầu dùng để vote cluster |
+| `top_cluster_docs` | 20 | Số docs đầu ranking dùng để vote cluster |
 | `alpha` | 0.85 | Trọng số giữ ranking gốc (không override hoàn toàn) |
 
 ### Tại sao N_CLUSTERS = 200 hiệu quả?
