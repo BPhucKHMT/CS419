@@ -450,35 +450,185 @@ OUTPUT: Top k tài liệu có điểm số cao nhất
 
 ---
 
-## 6. Thử nghiệm và Đánh giá Hiệu năng Hệ thống
+## 6. Thử nghiệm, Đánh giá Hiệu năng và Hai phần Bonus
 
-Hệ thống được đánh giá bằng phương pháp kiểm thử toàn diện trên toàn bộ **225 câu truy vấn** của tập Cranfield.
+Hệ thống được đánh giá bằng phương pháp kiểm thử toàn diện trên toàn bộ **225 câu truy vấn** của tập Cranfield. Các mô hình đều dùng chung pipeline tiền xử lý, cùng tập relevance judgments và cùng bộ chỉ số: **MAP**, **Precision@20 (P@20)** và **Recall@20 (R@20)**.
 
-### 6.1. Phương pháp cải tiến: Cluster-based Reranking
-Để cải thiện độ chính xác, hệ thống áp dụng kỹ thuật Reranking dựa trên phân cụm tài liệu (KMeans Clustering):
-1. **Biểu diễn ngữ nghĩa tài liệu (LSA space)**: Ma trận TF-IDF của 1.400 tài liệu được giảm chiều bằng phương pháp **TruncatedSVD** xuống không gian 100 chiều để trích xuất các đặc trưng ngữ nghĩa tiềm ẩn (LSA space), sau đó thực hiện chuẩn hóa L2.
-2. **Phân cụm**: Sử dụng thuật toán KMeans phân chia 1.400 tài liệu thành **200 cụm** tài liệu nhỏ (mỗi cụm trung bình chứa ~7 tài liệu nhằm đảm bảo độ chính xác của tiểu chủ đề - *micro-topic*).
-3. **Cơ chế bỏ phiếu động (Online Voting)**:
-   * Khi nhận câu truy vấn, mô hình BM25 hoặc VSM sẽ trả về bảng xếp hạng thô.
-   * Lấy Top 20 tài liệu đầu tiên để "bỏ phiếu" chọn ra các cụm tài liệu quan trọng nhất đối với truy vấn.
-   * Điểm số của cụm $c$ được chuẩn hóa: $\text{cluster\_score}[c] = \text{count}[c] / \text{max\_count}$.
-4. **Tích hợp điểm lai (Hybrid Scoring)**:
-   * Điểm số truy hồi thô của tài liệu được chuẩn hóa về $[0, 1]$: $\text{norm\_score}[d] = \text{score}[d] / \text{max\_score}$.
-   * Kết hợp điểm số theo công thức:
-     $$\text{final\_score}[d] = \alpha \cdot \text{norm\_score}[d] + (1 - \alpha) \cdot \text{cluster\_score}[\text{cluster}(d)]$$
-   * Tham số tối ưu hóa thực nghiệm: $\alpha = 0.85$.
+### 6.1. Phần Bonus 1: KMeans Cluster-based Reranking
 
-### 6.2. Bảng kết quả so sánh hiệu năng (Final Evaluation)
+#### 6.1.1. Động lực cải tiến
+Các mô hình VSM và BM25 chủ yếu dựa trên mức độ trùng khớp từ khóa giữa câu truy vấn và tài liệu. Cách tiếp cận này mạnh với các truy vấn chứa thuật ngữ đặc thù, nhưng có thể bỏ sót các tài liệu liên quan cùng chủ đề nếu chúng diễn đạt bằng bộ từ hơi khác. Vì vậy, phần bonus thứ nhất bổ sung một bước **reranking dựa trên cụm tài liệu** nhằm khai thác tín hiệu chủ đề ở mức corpus.
 
-| Chỉ số đánh giá | VSM Baseline | VSM + Cluster Reranking | BM25 Baseline | BM25 + Cluster Reranking |
-|:---|:---:|:---:|:---:|:---:|
-| **MAP** | 0.2923 | **0.3045** *(+4.17%)* | 0.3118 | **0.3297** *(+5.74%)* |
-| **P@20** | 0.1573 | **0.1660** *(+5.53%)* | 0.1622 | **0.1720** *(+6.04%)* |
-| **Recall@20** | 0.5048 | **0.5305** *(+5.09%)* | 0.5182 | **0.5500** *(+6.13%)* |
+Ý tưởng chính: nếu nhiều tài liệu trong top đầu của ranking ban đầu cùng thuộc một cụm, cụm đó có khả năng đại diện cho chủ đề liên quan đến query. Các tài liệu khác trong cùng cụm sẽ được tăng điểm nhẹ để cải thiện độ phủ chủ đề mà không phá vỡ hoàn toàn ranking gốc.
 
-**Nhận xét**: 
-* **BM25 vượt trội hơn VSM** ở tất cả các khía cạnh nhờ cơ chế bão hòa tần suất và hiệu chỉnh độ dài tài liệu tối ưu.
-* **Cluster Reranking cải thiện đồng loạt tất cả các mô hình**. Điểm MAP của BM25 tăng từ 0.3118 lên **0.3297** (+5.74%). Recall@20 tăng lên **0.5500**, giúp tìm thấy thêm hơn 3% tài liệu liên quan thực sự trong Top 20 kết quả trả về.
+#### 6.1.2. Quy trình offline: xây dựng không gian cụm
+Trước khi truy vấn, hệ thống xây dựng không gian biểu diễn tài liệu để phân cụm:
+
+```text
+Processed Cranfield Documents
+        ↓
+TF-IDF Matrix
+        ↓
+TruncatedSVD
+        ↓
+LSA Vector Space 100D
+        ↓
+L2 Normalization
+        ↓
+KMeans Clustering với 200 clusters
+        ↓
+doc_to_cluster và cluster_to_docs
+```
+
+Cấu hình thực nghiệm:
+
+| Thành phần | Giá trị | Mục đích |
+|---|:---:|---|
+| Số tài liệu | 1.400 | Toàn bộ Cranfield collection |
+| Không gian đầu vào | TF-IDF | Biểu diễn từ khóa đã chuẩn hóa |
+| Giảm chiều | TruncatedSVD 100D | Tạo LSA space, giảm nhiễu và sparsity |
+| Chuẩn hóa | L2 normalization | Giúp KMeans ổn định hơn |
+| Thuật toán cụm | KMeans | Gom tài liệu theo micro-topic |
+| Số cụm | 200 | Trung bình khoảng 7 tài liệu/cụm |
+
+Việc chọn **200 cụm** tạo ra các cụm nhỏ kiểu *micro-topic*. Điều này phù hợp với Cranfield vì các tài liệu thường xoay quanh nhiều chủ đề khí động học hẹp như boundary layer, shock wave, heat transfer, supersonic flow,...
+
+#### 6.1.3. Quy trình online: reranking theo cụm
+Với mỗi query, hệ thống thực hiện:
+
+```text
+Query
+  ↓
+VSM hoặc BM25 trả về ranking ban đầu trên 1.400 docs
+  ↓
+Lấy top-20 documents đầu ranking
+  ↓
+Đếm số lượt xuất hiện của từng cluster trong top-20
+  ↓
+Chuẩn hóa cluster_score[c] = count[c] / max_count
+  ↓
+Kết hợp retrieval score và cluster score
+  ↓
+Sinh ranking mới sau reranking
+```
+
+Công thức kết hợp điểm:
+
+$$\text{final\_score}[d] = \alpha \cdot \text{norm\_score}[d] + (1 - \alpha) \cdot \text{cluster\_score}[\text{cluster}(d)]$$
+
+Trong đó:
+
+* $\text{norm\_score}[d] = \frac{\text{retrieval\_score}[d]}{\max(\text{retrieval\_score})}$ là điểm truy hồi gốc đã chuẩn hóa.
+* $\text{cluster\_score}[\text{cluster}(d)]$ là mức độ quan trọng của cụm chứa tài liệu $d$ dựa trên voting từ top-20.
+* $\alpha = 0.85$ giúp ranking gốc vẫn giữ vai trò chính, cluster chỉ đóng vai trò boost nhẹ.
+
+#### 6.1.4. Kết quả của Cluster Reranking
+
+| Model | MAP | P@20 | R@20 |
+|---|:---:|:---:|:---:|
+| VSM Baseline | 0.2923 | 0.1573 | 0.5048 |
+| **VSM + Cluster Reranking** | **0.3045** | **0.1660** | **0.5305** |
+| BM25 Baseline | 0.3118 | 0.1622 | 0.5182 |
+| **BM25 + Cluster Reranking** | **0.3297** | **0.1720** | **0.5500** |
+
+Mức cải thiện:
+
+| So sánh | ΔMAP | ΔP@20 | ΔR@20 |
+|---|:---:|:---:|:---:|
+| VSM + Cluster so với VSM | +4.17% | +5.53% | +5.09% |
+| BM25 + Cluster so với BM25 | +5.74% | +6.04% | +6.13% |
+
+**Nhận xét:** Cluster Reranking cải thiện đồng loạt cả ba metric cho cả VSM và BM25. Kết quả tốt nhất là **BM25 + Cluster Reranking** với MAP = **0.3297** và R@20 = **0.5500**. Điều này cho thấy tín hiệu cụm giúp hệ thống tìm thêm tài liệu liên quan trong top-20, đặc biệt ở các query có nhiều tài liệu cùng micro-topic.
+
+---
+
+### 6.2. Phần Bonus 2: So sánh với Whoosh BM25F Baseline
+
+#### 6.2.1. Mục tiêu so sánh
+Phần bonus thứ hai dùng thư viện **Whoosh** để xây dựng một baseline bên ngoài. Mục tiêu không phải thay thế mô hình thủ công, mà là dùng một thư viện IR có sẵn để kiểm chứng chất lượng tương đối của pipeline tự cài đặt.
+
+Để so sánh công bằng, Whoosh được chạy trên cùng:
+
+* Bộ tài liệu Cranfield 1.400 documents.
+* 225 queries.
+* 225 relevance files.
+* Bộ metric MAP, P@20, R@20.
+* Pipeline tiền xử lý của dự án.
+
+#### 6.2.2. Tiền xử lý dùng cho Whoosh
+Thay vì dùng analyzer mặc định của Whoosh, hệ thống đưa documents và queries qua lại **cùng hàm `process_document`** đã dùng cho VSM/BM25 thủ công:
+
+```text
+Raw text
+  ↓
+lowercase và thay '-' bằng khoảng trắng
+  ↓
+mở rộng viết tắt bằng ABBREVIATIONS
+  ↓
+chuyển số thành chữ bằng num2words
+  ↓
+loại ký tự đặc biệt
+  ↓
+word_tokenize
+  ↓
+stopword removal + bỏ token chữ có độ dài <= 2
+  ↓
+Snowball stemming
+  ↓
+chuỗi token đã chuẩn hóa dùng cho Whoosh index/search
+```
+
+Trong Whoosh, trường nội dung dùng `KeywordAnalyzer()` để tránh việc Whoosh tokenize hoặc stem lại lần nữa. Như vậy, dữ liệu đưa vào Whoosh đã ở cùng không gian term với mô hình VSM/BM25 của dự án.
+
+#### 6.2.3. Cấu hình Whoosh
+
+| Thành phần | Cấu hình |
+|---|---|
+| Thư viện | Whoosh |
+| Scoring | BM25F |
+| Analyzer | `KeywordAnalyzer()` sau khi đã preprocess thủ công |
+| Index field | `doc_id`, `content` |
+| Query parser | `QueryParser` với `OrGroup` |
+| Số tài liệu retrieve | 1.400 docs/query |
+| Evaluation | MAP, P@20, Recall@20 |
+
+`OrGroup` được dùng để query hoạt động theo hướng OR giữa các term đã xử lý. Điều này gần với cách hệ thống thủ công dùng chỉ mục đảo ngược để cộng điểm các tài liệu chứa ít nhất một term của query.
+
+#### 6.2.4. Kết quả so sánh với Whoosh
+
+| Model | MAP | P@20 | R@20 |
+|---|:---:|:---:|:---:|
+| VSM Baseline | 0.2923 | 0.1573 | 0.5048 |
+| VSM + Cluster Reranking | 0.3045 | 0.1660 | 0.5305 |
+| BM25 Baseline | 0.3118 | 0.1622 | 0.5182 |
+| **BM25 + Cluster Reranking** | **0.3297** | **0.1720** | **0.5500** |
+| Whoosh BM25F Baseline | 0.3030 | 0.1607 | 0.5123 |
+
+#### 6.2.5. Phân tích kết quả Whoosh
+Kết quả Whoosh BM25F đạt **MAP = 0.3030**, cao hơn VSM Baseline và gần với VSM + Cluster Reranking, nhưng vẫn thấp hơn BM25 thủ công và BM25 + Cluster Reranking.
+
+Điều này cho thấy:
+
+* Pipeline thủ công không chỉ tái hiện được chất lượng của thư viện IR có sẵn, mà còn vượt Whoosh BM25F trong thực nghiệm Cranfield.
+* BM25 thủ công được tuning trực tiếp cho tập dữ liệu này với $k_1 = 2.0$ và $b = 0.6$, trong khi Whoosh BM25F dùng cấu hình scoring tổng quát hơn.
+* Khi kết hợp thêm cluster reranking, mô hình thủ công khai thác được tín hiệu chủ đề ngoài term matching nên đạt kết quả cao nhất.
+
+---
+
+### 6.3. Tổng kết phần thực nghiệm
+
+| Hạng | Mô hình | MAP | Nhận xét ngắn |
+|:---:|---|:---:|---|
+| 1 | **BM25 + Cluster Reranking** | **0.3297** | Tốt nhất tổng thể, cân bằng term matching và micro-topic reranking |
+| 2 | BM25 Baseline | 0.3118 | Baseline thủ công mạnh nhất trước khi rerank |
+| 3 | VSM + Cluster Reranking | 0.3045 | Cluster giúp VSM vượt rõ baseline |
+| 4 | Whoosh BM25F Baseline | 0.3030 | Baseline thư viện tốt, nhưng chưa vượt BM25 thủ công |
+| 5 | VSM Baseline | 0.2923 | Mô hình nền đơn giản nhất |
+
+Hai phần bonus cho thấy hướng cải tiến có ý nghĩa:
+
+1. **KMeans Cluster Reranking** cải thiện chất lượng truy hồi bằng tín hiệu chủ đề ở cấp cụm.
+2. **Whoosh BM25F** cung cấp baseline thư viện để đối chiếu, chứng minh pipeline thủ công đạt chất lượng cạnh tranh và có thể vượt baseline tổng quát khi được tuning theo Cranfield.
 
 ---
 
