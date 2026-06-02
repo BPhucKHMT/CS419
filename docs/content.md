@@ -63,53 +63,63 @@ Danh sách Token chuẩn hóa (Processed Tokens)
 ---
 
 ## 3. Lựa chọn Từ khóa (Term Selection)
-Chọn term (lựa chọn từ khóa đại diện) đóng vai trò quyết định đến hiệu năng của hệ thống IR. Nếu không lọc nhiễu, kích thước từ điển sẽ rất lớn, dẫn đến chỉ mục cồng kềnh và tốc độ truy vấn chậm. Ngược lại, nếu lọc quá đà sẽ làm mất mát thông tin ngữ nghĩa quan trọng.
+Lựa chọn term quyết định trực tiếp đến chất lượng biểu diễn tài liệu. Mục tiêu của bước này là giữ lại các từ mang nội dung chính, đồng thời loại bỏ các token ít giá trị để giảm kích thước vocabulary và tăng tốc truy vấn.
 
 ### 3.1. Loại Term được chọn & Lý giải lựa chọn
-Trong các phương pháp chọn term, dự án lựa chọn phương pháp:
-* **Loại term được chọn**: **Từ đơn (Word)** làm đơn vị cơ bản cho không gian từ vựng.
-* **Lý do lựa chọn**:
-  1. *Tính chất ngôn ngữ tiếng Anh*: Bộ dữ liệu Cranfield viết bằng tiếng Anh, có ranh giới từ phân định rõ ràng qua khoảng trắng và các ký tự đặc biệt, giúp việc tách từ (Word Segmentation/Tokenize) đạt độ chính xác cao mà không cần các bộ từ điển ranh giới phức tạp.
-  2. *Đơn giản và hiệu năng*: Biểu diễn tài liệu dưới dạng túi từ (Bag-of-Words) trên các từ đơn là giải pháp tối ưu và phổ biến nhất, đảm bảo cân bằng giữa hiệu năng tính toán và độ chính xác truy hồi. Việc sử dụng *N-gram* sẽ làm bùng nổ số lượng chiều của vector (kích thước từ điển tăng theo cấp số nhân), gây quá tải bộ nhớ và tính toán. Trong khi sử dụng *Khái niệm (Concept)* đòi hỏi thêm quy trình khử nhập nhằng nghĩa (Word Sense Disambiguation) phức tạp nhưng hiệu quả mang lại trên ngữ liệu kỹ thuật khí động học không thực sự vượt trội.
+Dự án chọn **từ đơn (unigram/word)** làm đơn vị term chính.
+
+Lý do lựa chọn:
+
+1. Bộ dữ liệu Cranfield là tiếng Anh nên ranh giới từ khá rõ, phù hợp với tách từ theo word-level.
+2. VSM và BM25 trong hệ thống đều hoạt động trên mô hình Bag-of-Words, nên dùng unigram giúp biểu diễn đơn giản, dễ lập chỉ mục và dễ giải thích điểm số.
+3. N-gram có thể giữ được cụm từ tốt hơn, nhưng làm vocabulary tăng mạnh; concept-level lại cần thêm xử lý ngữ nghĩa phức tạp. Vì vậy, unigram là lựa chọn cân bằng giữa độ chính xác, tốc độ và khả năng trình bày.
 
 ### 3.2. Phương pháp Chọn Term
-Hệ thống áp dụng phương pháp lọc và chọn term dựa trên hai nguyên lý cốt lõi trong slide:
-1. **Mức độ quan trọng và Độ phân biệt của từ (Word's Resolution Power)**:
-   * Loại bỏ các từ dừng (Stopwords): Những từ xuất hiện cực kỳ phổ biến trên toàn bộ corpus như *the, is, an, of* có DF rất cao dẫn đến IDF xấp xỉ 0. Các từ này hoàn toàn không có khả năng phân biệt để tìm ra tài liệu liên quan. Việc loại bỏ chúng giúp loại trừ các chiều vector vô nghĩa.
-   * Loại bỏ các từ quá ngắn ($\le 2$ ký tự): Hầu hết các từ này là từ dừng viết tắt hoặc nhiễu ký tự đơn.
-2. **Xử lý các lớp tương đương (Equivalence Classes / Morphological Variations)**:
-   * Để giải quyết bài toán biến thể hình thái từ (ví dụ: số nhiều/số ít như *wing* và *wings*; các thì của động từ như *obeyed* và *obeying*), hệ thống đưa chúng về một gốc từ (stem) duy nhất để biểu diễn.
-   * Sử dụng thuật toán **Stemming (Snowball Stemmer)** để đồng nhất các từ thuộc cùng lớp tương đương. Nhờ đó, một câu truy vấn chứa từ *obeyed* vẫn có khả năng khớp chính xác với tài liệu chứa từ *obey*.
+Hệ thống chọn term theo hai nhóm tiêu chí chính:
+
+1. **Loại nhiễu và term ít phân biệt**
+   * Loại bỏ stopwords như `the`, `is`, `an`, `of` vì các từ này xuất hiện quá phổ biến và gần như không giúp phân biệt tài liệu.
+   * Loại bỏ token chữ cái có độ dài $\le 2$ vì thường là từ ngắn ít thông tin hoặc nhiễu.
+   * Chuẩn hóa ký tự đặc biệt, gạch nối, chữ số và viết tắt để các term có cùng cách biểu diễn.
+
+2. **Gom các biến thể hình thái về cùng một term**
+   * Các biến thể như `wing`, `wings` hoặc `obeyed`, `obeying` được đưa về cùng một dạng gốc.
+   * Hệ thống dùng **Snowball Stemmer** để tạo lớp tương đương hình thái, giúp query và document khớp nhau dù dùng biến thể từ khác nhau.
 
 ---
 
 ### 3.3. Thuật toán Chọn Term
-Quy trình lọc và chọn term từ văn bản tài liệu/câu truy vấn được thực hiện tự động qua thuật toán sau:
+Có thể mô tả thuật toán chọn term dưới dạng tổng quát như sau:
 
 #### Mã giả thuật toán (Pseudocode):
 ```text
 ALGORITHM TermSelection(DocumentText D, StopwordsList S, AbbreviationsDict A, Stemmer St)
 INPUT: Văn bản thô D, Danh sách từ dừng S, Từ điển viết tắt A, Thuật toán Stemmer St
-OUTPUT: Danh sách các Term được lựa chọn đại diện
+OUTPUT: Danh sách term đã chuẩn hóa
 
-1. D_low ← Chuyển D thành chữ thường, thay thế tất cả gạch ngang '-' bằng khoảng trắng
-2. For each pattern, expansion in A:
-       D_low ← Thay thế tất cả các chuỗi khớp với pattern trong D_low bằng expansion
-3. For each numeric_sequence in D_low:
-       word_equivalent ← Chuyển số thành chữ tiếng Anh (dùng num2words)
-       D_low ← Thay thế numeric_sequence trong D_low bằng word_equivalent
-4. D_clean ← Loại bỏ toàn bộ các ký tự không phải chữ cái (a-z), chữ số (0-9) hoặc khoảng trắng
-5. Tokens ← Tách từ D_clean bằng thuật toán phân tách từ (word_tokenize)
-6. RemainingTokens ← Khởi tạo danh sách rỗng
-7. For each word in Tokens:
-       If (độ dài word > 2 OR word chứa ký tự số) AND word không nằm trong S:
-           Append word vào RemainingTokens
-8. SelectedTerms ← Khởi tạo danh sách rỗng
-9. For each word in RemainingTokens:
-       stemmed_word ← Áp dụng St.stem(word) (Snowball Stemmer)
-       Append stemmed_word vào SelectedTerms
-10. Return SelectedTerms
+1. D_norm ← NormalizeText(D, A)
+       - chuyển chữ thường
+       - tách gạch nối thành khoảng trắng
+       - mở rộng viết tắt
+       - chuyển số thành chữ
+       - loại ký tự đặc biệt
+
+2. Tokens ← Tokenize(D_norm)
+
+3. SelectedTerms ← []
+4. For each token in Tokens:
+       If IsValidToken(token, S):
+           term ← St.stem(token)
+           Append term vào SelectedTerms
+
+5. Return SelectedTerms
+
+FUNCTION IsValidToken(token, S):
+    Return token không thuộc S
+           AND (độ dài token > 2 OR token có chứa chữ số)
 ```
+
+Tóm lại, thuật toán không chọn term bằng một công thức thống kê riêng như Chi-square hay Mutual Information. Với bài toán này, term được chọn bằng **pipeline lọc nhiễu + chuẩn hóa hình thái**, sau đó các mô hình VSM/BM25 mới dùng TF, DF và IDF để tính trọng số và xếp hạng.
 
 ---
 
@@ -118,60 +128,51 @@ Nhờ áp dụng thuật toán chọn term chặt chẽ, không gian từ vựng
 
 | Đặc trưng thống kê | Trước xử lý (Raw Tokenize) | Sau xử lý (Processed) | Tỷ lệ giảm |
 |--------------------|:-------------------------:|:--------------------:|:----------:|
-| **Số lượng Term độc bản (Vocabulary Size)** | **7.472** | **4.452** | **40.42%** |
+| **Số lượng Term độc bản (Vocabulary Size)** | **7.472** | **4.588** | **38.60%** |
 | **Độ dài trung bình tài liệu** | **161.91** từ | **95.58** từ | **40.97%** |
 
 * **Tổng số term phân tích được từ toàn bộ tài liệu (Trước xử lý)**: **7.472 terms**.
-* **Tổng số term được lựa chọn đưa vào từ điển (Sau tiền xử lý)**: **4.452 terms**.
+* **Tổng số term được lựa chọn đưa vào từ điển (Sau tiền xử lý)**: **4.588 terms**.
 * **Tỷ lệ chọn term (Selection Ratio)**: 
-  $$\text{Tỷ lệ term được chọn} = \frac{4.452}{7.472} \approx 59.58\%$$
-  *(Như vậy, hệ thống loại bỏ 40.42% các từ nhiễu/từ dừng không mang thông tin và giữ lại 59.58% gốc từ mang nội dung thực thụ)*.
+  $$\text{Tỷ lệ term được chọn} = \frac{4.588}{7.472} \approx 61.40\%$$
+  *(Như vậy, hệ thống loại bỏ khoảng 38.60% các từ nhiễu/từ dừng không mang thông tin và giữ lại khoảng 61.40% gốc từ mang nội dung thực thụ)*.
 
 ---
 
 ### 3.5. Danh sách các Term được chọn tiêu biểu
-Dưới đây là danh sách 25 term xuất hiện nhiều nhất trong bộ từ vựng 4.452 term được chọn từ tập tài liệu Cranfield, kèm theo tổng tần suất xuất hiện (`Total_TF`), số tài liệu chứa term (`DF`) và giá trị trọng số nghịch đảo tài liệu (`IDF`):
+Dưới đây là một số term tiêu biểu trong bộ từ vựng 4.588 term được chọn từ tập tài liệu Cranfield. Bảng không liệt kê toàn bộ vocabulary, mà chỉ chọn các term có tần suất cao hoặc mang ý nghĩa chuyên ngành rõ trong miền khí động học:
 
 | Hạng | Term được chọn | Thừa số gốc (Gợi ý từ gốc) | Tổng tần suất (Total_TF) | Số tài liệu chứa (DF) | Trọng số IDF |
 |:---:|:---|:---|:---:|:---:|:---:|
 | 1 | **flow** | *flowing, flows, flow* | 2082 | 730 | 0.6512 |
-| 2 | **number** | *numbers, number* | 1500 | 633 | 0.7938 |
-| 3 | **pressur** | *pressure, pressures* | 1391 | 552 | 0.9307 |
-| 4 | **boundari** | *boundary, boundaries* | 1216 | 470 | 1.0915 |
-| 5 | **layer** | *layer, layers* | 1164 | 414 | 1.2184 |
-| 6 | **result** | *results, result* | 1088 | 692 | 0.7046 |
-| 7 | **two** | *two* | 1071 | 602 | 0.8440 |
-| 8 | **point** | *points, point* | 1065 | 476 | 1.0788 |
-| 9 | **one** | *one* | 1032 | 561 | 0.9145 |
-| 10 | **effect** | *effects, effect* | 996 | 540 | 0.9527 |
-| 11 | **method** | *methods, method* | 887 | 455 | 1.1239 |
-| 12 | **theori** | *theory, theories* | 882 | 456 | 1.1217 |
-| 13 | **bodi** | *bodies, body* | 854 | 293 | 1.5641 |
-| 14 | **solut** | *solution, solutions* | 849 | 407 | 1.2354 |
-| 15 | **heat** | *heating, heated, heat* | 847 | 306 | 1.5206 |
-| 16 | **wing** | *wings, wing* | 837 | 226 | 1.8237 |
-| 17 | **mach** | *mach* | 823 | 388 | 1.2832 |
-| 18 | **equat** | *equation, equations* | 781 | 402 | 1.2478 |
-| 19 | **shock** | *shock, shocks* | 746 | 240 | 1.7636 |
-| 20 | **use** | *used, use, using* | 733 | 513 | 1.0040 |
-| 21 | **present** | *presented, present* | 698 | 507 | 1.0157 |
-| 22 | **surfac** | *surface, surfaces* | 691 | 330 | 1.4451 |
-| 23 | **distribut** | *distribution, distributions* | 650 | 361 | 1.3553 |
-| 24 | **obtain** | *obtained, obtain* | 643 | 464 | 1.1043 |
-| 25 | **temperatur** | *temperature, temperatures* | 629 | 268 | 1.6532 |
+| 2 | **pressur** | *pressure, pressures* | 1391 | 552 | 0.9307 |
+| 3 | **boundari** | *boundary, boundaries* | 1216 | 470 | 1.0915 |
+| 4 | **layer** | *layer, layers* | 1164 | 414 | 1.2184 |
+| 5 | **heat** | *heating, heated, heat* | 847 | 306 | 1.5206 |
+| 6 | **wing** | *wings, wing* | 837 | 226 | 1.8237 |
+| 7 | **mach** | *mach* | 823 | 388 | 1.2832 |
+| 8 | **shock** | *shock, shocks* | 746 | 240 | 1.7636 |
+| 9 | **surfac** | *surface, surfaces* | 691 | 330 | 1.4451 |
+| 10 | **temperatur** | *temperature, temperatures* | 629 | 268 | 1.6532 |
 
 ---
 
 ## 4. Mô hình Truy xuất & Cơ chế tính Trọng số Term
 
-Báo cáo phân tích chi tiết cơ sở toán học và cơ chế tính trọng số, đồng thời làm rõ sự khác biệt giữa **Công thức cơ sở tính độ liên quan** (lý thuyết/toán học gốc) và **Công thức xếp hạng** (rút gọn/lập trình thực tế) của các mô hình trong đồ án:
+Báo cáo phân tích chi tiết cơ sở toán học và cơ chế tính trọng số, đồng thời làm rõ sự khác biệt giữa ba loại công thức thường dễ bị nhầm lẫn trong đồ án:
+
+* **Công thức cơ sở**: trả lời câu hỏi "mô hình hiểu độ liên quan giữa tài liệu và câu truy vấn là gì?".
+* **Công thức tính trọng số term**: trả lời câu hỏi "mỗi từ khóa đóng góp bao nhiêu điểm?".
+* **Công thức xếp hạng**: trả lời câu hỏi "khi có query thật, hệ thống cộng điểm và sắp xếp tài liệu như thế nào?".
+
+Nói ngắn gọn: **công thức cơ sở** là ý tưởng đo liên quan của mô hình, **công thức trọng số term** là cách tính điểm cho từng term, còn **công thức xếp hạng** là cách tổng hợp các trọng số đó để tạo ranking cuối cùng.
 
 ### 4.1. Biểu diễn Tài liệu và Câu truy vấn (Representation)
 Cách thức biểu diễn thông tin đóng vai trò là đầu vào cho quá trình so khớp độ liên quan:
 * **Trong mô hình Vector (VSM)**: Cả tài liệu $d$ và câu truy vấn $q$ đều được biểu diễn dưới dạng **Vector số thực** trong không gian từ vựng đa chiều:
   $$\vec{d} = \left(w_{1,d}, w_{2,d}, ..., w_{V,d}\right)$$
   $$\vec{q} = \left(w_{1,q}, w_{2,q}, ..., w_{V,q}\right)$$
-  *(Trong đó $V=4452$ là chiều từ vựng, các thành phần là trọng số TF-IDF).*
+  *(Trong đó $V=4588$ là chiều từ vựng, các thành phần là trọng số TF-IDF).*
 * **Trong mô hình Probabilistic (Okapi BM25)**: Tài liệu được biểu diễn dưới dạng **Túi từ (Bag-of-Words)** đi kèm với độ dài thực tế của tài liệu $|d|$ để chuẩn hóa.
 
 ---
@@ -179,290 +180,429 @@ Cách thức biểu diễn thông tin đóng vai trò là đầu vào cho quá t
 ### 4.2. Vector Space Model (VSM) với TF-IDF
 
 #### 1. Công thức cơ sở để tính độ liên quan giữa tài liệu và câu truy vấn
-Trong mô hình VSM lý thuyết, độ tương đồng hay độ liên quan giữa tài liệu $d$ và câu truy vấn $q$ được đo lường bằng **Cosine Similarity** (độ đo góc giữa hai vector):
+Trong mô hình VSM lý thuyết, độ tương đồng hay độ liên quan giữa tài liệu $d$ và câu truy vấn $q$ được đo lường bằng **Cosine Similarity**. Ý tưởng chính là: nếu vector tài liệu và vector truy vấn càng cùng hướng, tài liệu càng được xem là liên quan đến truy vấn.
+
 $$\text{Similarity}(q, d) = \cos(q, d) = \frac{\vec{q} \cdot \vec{d}}{\|\vec{q}\|_2 \|\vec{d}\|_2} = \frac{\sum_{t \in q \cap d} w_{t,q} \cdot w_{t,d}}{\sqrt{\sum_{t \in q} w_{t,q}^2} \cdot \sqrt{\sum_{t \in d} w_{t,d}^2}}$$
-* **Cơ sở lý thuyết**: Mô hình VSM (do Gerard Salton đề xuất) biểu diễn tài liệu và câu truy vấn như các vector trong không gian Euclid đa chiều $\mathbb{R}^V$ ($V = 4452$ trong hệ thống này). Cosine Similarity chỉ quan tâm đến hướng góc lệch vector chứ không phụ thuộc vào độ dài vector. Bằng cách chia cho tích độ dài Euclid (L2-norm) $\|\vec{q}\|_2 \|\vec{d}\|_2$, phép đo này chuẩn hóa các văn bản về cùng một mặt cầu đơn vị, giúp loại bỏ hoàn toàn sai lệch do độ dài văn bản thô khác biệt gây ra.
+
+* **Tử số** $\vec{q} \cdot \vec{d}$: đo mức độ trùng khớp có trọng số giữa query và document.
+* **Mẫu số** $\|\vec{q}\|_2 \|\vec{d}\|_2$: chuẩn hóa độ dài vector, giúp tài liệu dài không tự động có lợi thế chỉ vì chứa nhiều từ hơn.
+* **Cách nói trên slide**: VSM đo độ gần nhau về hướng giữa vector query và vector document; score càng cao thì tài liệu càng liên quan.
 
 #### 2. Công thức tính trọng số term
-Trọng số của mỗi từ khóa trong mô hình VSM được tính toán dựa trên hệ thống TF-IDF để kết hợp tầm quan trọng nội bộ (local) và độ phân biệt toàn cục (global):
+Sau khi đã biểu diễn tài liệu và câu truy vấn thành vector, cần xác định giá trị của từng chiều trong vector. Mỗi chiều ứng với một term, và trọng số term được tính bằng TF-IDF:
+
 * **Trọng số từ trong Tài liệu ($w_{t,d}$)**:
   $$w_{t,d} = TF(t, d) \times IDF(t) = \frac{tf_{t,d}}{|d|} \times \ln\!\left(\frac{N}{df_t}\right)$$
 * **Trọng số từ trong Câu truy vấn ($w_{t,q}$)**:
   $$w_{t,q} = TF(t, q) \times IDF(t) = \frac{tf_{t,q}}{|q|} \times \ln\!\left(\frac{N}{df_t}\right)$$
 * **Giải thích thành phần**:
-  * **Tần suất từ khóa ($TF$)**: Phản ánh mật độ xuất hiện của từ khóa bằng cách chia tần suất thô ($tf$) cho tổng số từ của tài liệu ($|d|$) hoặc query ($|q|$) nhằm chuẩn hóa độ dài tuyến tính.
-  * **Tần suất nghịch đảo tài liệu ($IDF$)**: Phản ánh giá trị thông tin/độ phân biệt của từ khóa. Lấy Logarithm tự nhiên của tổng số tài liệu $N$ chia cho số tài liệu chứa từ $df_t$.
+  * $tf_{t,d}$: số lần term $t$ xuất hiện trong tài liệu $d$.
+  * $|d|$: độ dài tài liệu sau tiền xử lý.
+  * $N$: tổng số tài liệu trong corpus.
+  * $df_t$: số tài liệu có chứa term $t$.
+  * **TF** cho biết term xuất hiện dày hay thưa trong một tài liệu.
+  * **IDF** cho biết term đó hiếm hay phổ biến trong toàn bộ corpus.
+
+* **Ý nghĩa trực quan**: Một term có trọng số cao khi nó xuất hiện đủ nhiều trong tài liệu đang xét, nhưng không xuất hiện quá phổ biến trong toàn bộ tập tài liệu. Ví dụ `shock`, `wing`, `aeroelast` thường có khả năng phân biệt tốt hơn các từ chung như `result`, `method`.
 
 #### 3. Công thức xếp hạng tài liệu
-Trong lập trình thực tế trực tuyến, RSV (Retrieval Status Value) được rút gọn tối đa nhằm tối ưu hiệu năng tính toán:
-$$\text{score}_{\text{VSM}}(q, d) = \sum_{t \in q \cap d} w_{t,q} \cdot w_{t,d}' = \sum_{t \in q \cap d} w_{t,q} \cdot \frac{w_{t,d}}{\|\vec{d}\|_2}$$
+Khi người dùng nhập query, hệ thống tạo vector TF-IDF cho câu truy vấn, sau đó tính Cosine Similarity giữa vector truy vấn và vector TF-IDF của từng tài liệu ứng viên. Công thức xếp hạng thực tế trong chương trình là:
+
+$$\text{score}_{\text{VSM}}(q,d) = \frac{\sum_{t \in q \cap d} w_{t,q} \cdot w_{t,d}}{\|\vec{q}\|_2 \cdot \|\vec{d}\|_2}$$
+
 * **Cơ chế xếp hạng**:
-  * Chuẩn L2 của vector truy vấn $\|\vec{q}\|_2$ là hằng số đối với tất cả tài liệu ứng viên cho câu truy vấn đó, nên có thể lược bỏ khỏi mẫu số mà không làm thay đổi thứ tự xếp hạng.
-  * Chuẩn L2 của vector tài liệu $\|\vec{d}\|_2$ được tính toán trước ở pha ngoại tuyến (Offline Indexing) để sinh ra vector tài liệu đã chuẩn hóa L2 ($w_{t,d}' = \frac{w_{t,d}}{\|\vec{d}\|_2}$).
-  * RSV lúc này chỉ cần tính tích vô hướng rút gọn trên các postings list giao nhau.
+  * $w_{t,q}$ là trọng số TF-IDF của term trong query.
+  * $w_{t,d}$ là trọng số TF-IDF của term trong document.
+  * Chỉ các term thuộc $q \cap d$ mới đóng góp điểm.
+  * $\|\vec{q}\|_2$ và $\|\vec{d}\|_2$ được tính bằng `np.linalg.norm` khi gọi hàm `cosine_similarity`.
+  * Tài liệu có Cosine Similarity cao hơn sẽ được xếp hạng cao hơn.
+
+* **Cách nói trên slide**: VSM xếp hạng bằng cosine similarity đầy đủ giữa vector TF-IDF của query và vector TF-IDF của document. Trong code hiện tại, cả hai norm được tính trực tiếp lúc truy vấn, không chuẩn hóa vector trước.
 
 ---
 
 ### 4.3. Okapi BM25
 
 #### 1. Công thức cơ sở để tính độ liên quan giữa tài liệu và câu truy vấn
-Okapi BM25 có nguồn gốc từ mô hình xác suất truy xuất thông tin (BIM - Binary Independence Model). Công thức cơ sở để tính độ liên quan dựa trên tỷ lệ chênh lệch xác suất (Odds Ratio) của sự kiện tài liệu liên quan ($R=1$) so với không liên quan ($R=0$) dựa trên giả thiết độc lập giữa các từ khóa:
-$$O(R=1 \mid d, q) = \frac{P(R=1 \mid d, q)}{P(R=0 \mid d, q)} = \frac{P(d \mid R=1, q) \cdot P(R=1 \mid q)}{P(d \mid R=0, q) \cdot P(R=0 \mid q)}$$
-Bằng cách lấy Logarithm của tỷ số xác suất Odds, BIM định nghĩa điểm số độ liên quan cơ sở (không có tần suất và chuẩn hóa chiều dài):
-$$\text{Relevance}_{\text{BIM}}(q, d) \propto \sum_{t \in q \cap d} \ln \frac{p_t(1 - u_t)}{u_t(1 - p_t)}$$
-* **Cơ sở lý thuyết**: BIM biểu diễn tài liệu dưới dạng vector nhị phân đại diện cho sự xuất hiện (1) hoặc vắng mặt (0) của từ khóa ($p_t$ là xác suất xuất hiện của từ trong tập tài liệu liên quan, $u_t$ trong tập không liên quan). BIM cung cấp khung xác suất lý thuyết cơ sở vững chắc, làm bàn đạp cho BM25 tích hợp thêm tần suất từ khóa thực tế và hiệu chỉnh độ dài tài liệu.
+Với Okapi BM25, độ liên quan giữa tài liệu $d$ và câu truy vấn $q$ được tính trực tiếp bằng tổng điểm của các term truy vấn xuất hiện trong tài liệu:
+
+$$\text{Relevance}_{\text{BM25}}(d,q) = \sum_{t \in q \cap d} w_{\text{BM25}}(t,d)$$
+
+* $q \cap d$: các term vừa xuất hiện trong query, vừa xuất hiện trong tài liệu.
+* $w_{\text{BM25}}(t,d)$: điểm đóng góp của term $t$ cho tài liệu $d$.
+* Tài liệu có nhiều term truy vấn quan trọng thì tổng điểm cao hơn.
 
 #### 2. Công thức tính trọng số term
-Trọng số của mỗi từ khóa trong BM25 tích hợp bão hòa tần suất thực tế ($tf$) và chuẩn hóa độ dài văn bản:
+Trong BM25, trọng số đóng góp của mỗi term $t$ trong tài liệu $d$ được tính như sau:
+
 $$w_{\text{BM25}}(t, d) = IDF_{BM25}(t) \cdot \frac{f_{t,d} \cdot (k_1+1)}{f_{t,d} + k_1\left(1 - b + b \cdot \dfrac{|d|}{avgdl}\right)}$$
+
 * **Hàm IDF BM25**: Được điều chỉnh để tránh điểm số IDF bị âm khi từ khóa xuất hiện trong hơn 50% tài liệu:
   $$IDF_{BM25}(t) = \ln\!\left(\frac{N - df_t + 0.5}{df_t + 0.5} + 1\right)$$
-* **Bão hòa tần suất ($k_1 = 2.0$)**: Khống chế giới hạn trên của tần suất từ khóa. Khi $f_{t,d} \rightarrow \infty$, trọng số tiến dần đến giới hạn tiệm cận $k_1 + 1$ thay vì tăng tuyến tính vô hạn như VSM.
-* **Chuẩn hóa độ dài tài liệu ($b = 0.6$)**: Điều khiển mức phạt độ dài tài liệu $|d|$ so với độ dài trung bình toàn corpus $avgdl$ (giá trị tính toán thực tế sau tiền xử lý là `95.58`).
+* **Giải thích thành phần**:
+  * $f_{t,d}$: số lần term $t$ xuất hiện trong tài liệu $d$.
+  * $|d|$: độ dài tài liệu.
+  * $avgdl$: độ dài trung bình của tài liệu trong corpus, ở thực nghiệm này là `95.58`.
+  * $k_1 = 2.0$: điều khiển mức bão hòa tần suất. Khi term lặp lại nhiều lần, điểm vẫn tăng nhưng chậm dần.
+  * $b = 0.6$: điều khiển mức chuẩn hóa độ dài tài liệu. Nếu $b$ càng lớn, hệ thống càng phạt tài liệu dài mạnh hơn.
+
+
 
 #### 3. Công thức xếp hạng tài liệu
-Khi có câu truy vấn $q$, hệ thống xếp hạng tài liệu dựa trên tổng điểm trọng số BM25 của các từ khóa trùng khớp:
+Khi có câu truy vấn $q$, hệ thống xếp hạng tài liệu dựa trên tổng điểm BM25 của các term truy vấn xuất hiện trong tài liệu:
+
 $$\text{score}_{\text{BM25}}(d,q) = \sum_{t \in q \cap d} IDF_{BM25}(t) \cdot \frac{f_{t,d} \cdot (k_1+1)}{f_{t,d} + k_1\left(1 - b + b \cdot \dfrac{|d|}{avgdl}\right)}$$
-* **Cơ chế xếp hạng**: Điểm số xếp hạng cuối cùng (RSV) là tổng điểm tích lũy của các trọng số từ khóa trong tài liệu $d$ thuộc câu truy vấn $q$. Các tài liệu không chứa bất kỳ từ khóa truy vấn nào sẽ có điểm bằng 0 và bị loại bỏ khỏi danh sách xếp hạng.
+
+* **Cơ chế xếp hạng**:
+  * Với mỗi term trong query, hệ thống lấy posting list từ chỉ mục đảo ngược.
+  * Với mỗi tài liệu trong posting list, hệ thống tính điểm term theo BM25.
+  * Điểm cuối cùng của tài liệu là tổng điểm của tất cả term query mà tài liệu chứa.
+  * Tài liệu có score cao hơn được xếp trước.
+
+* **Cách nói trên slide**: BM25 cộng điểm từng term trong query; term hiếm và xuất hiện hợp lý trong tài liệu sẽ đóng góp nhiều điểm hơn, nhưng tài liệu dài bị chuẩn hóa để ranking công bằng hơn.
 
 ---
 
 ## 5. Cấu trúc Chỉ mục & Quá trình Lập/Truy xuất dữ liệu
 
-Hệ thống sử dụng cấu trúc **Chỉ mục đảo ngược (Inverted Index)** để tối ưu hóa hiệu năng, giảm độ phức tạp thời gian tìm kiếm từ quét tuyến tính toàn bộ corpus $O(N \cdot |Q|)$ xuống chỉ còn $O(|Q| \cdot L)$ với $L$ là độ dài trung bình của postings list ($L \ll N$).
+Sau khi đã chọn term và xây dựng công thức tính điểm, bước tiếp theo là tổ chức dữ liệu sao cho truy vấn có thể được xử lý nhanh. Nếu mỗi query đều phải quét lại toàn bộ 1.400 tài liệu, hệ thống sẽ tốn nhiều thời gian. Vì vậy, đồ án sử dụng **chỉ mục đảo ngược (Inverted Index)**.
 
-### 5.1. Cấu trúc Dữ liệu Chỉ mục
-Cấu trúc chỉ mục đảo ngược trong đồ án lưu trữ ánh xạ từ một từ khóa (`term`) đến danh sách các tài liệu chứa từ khóa đó kèm theo thông tin tần suất hoặc trọng số (Postings List) và các siêu dữ liệu hỗ trợ tính toán:
-
-* **Từ điển từ vựng (Vocabulary Dictionary)**:
-  Lưu trữ danh sách các term độc bản cùng các thống kê toàn cục:
-  * `term` $\rightarrow$ giá trị $df_t$ (Document Frequency - tần suất tài liệu chứa term) và trọng số $IDF$ đã được tính sẵn.
-  * Chỉ mục từ vựng (Vocabulary Index) ánh xạ `term` sang một chỉ số nguyên $idx \in [0, V-1]$ để định vị trong ma trận đặc trưng.
-* **Danh sách Postings (Postings List)**:
-  Ánh xạ từ mỗi `term` đến mảng các cặp giá trị tài liệu:
-  $$\text{term} \rightarrow \left\{ nDoc: df_t, \text{postings: } [(doc\_id_1, f_{t,d_1}), (doc\_id_2, f_{t,d_2}), ...] \right\}$$
-  * Trong mô hình VSM: $f_{t,d}$ là trọng số TF-IDF đã được chuẩn hóa L2 ($w_{t,d}'$) của term trong tài liệu $d$.
-  * Trong mô hình BM25: $f_{t,d}$ là tần suất thô (Term Frequency) xuất hiện của term trong tài liệu $d$ để phục vụ tính điểm phi tuyến động trực tuyến.
-* **Bảng tra cứu độ dài văn bản (Document Length Lookup Table)**:
-  Lưu trữ độ dài thực tế của từng tài liệu trong cơ sở dữ liệu:
-  $$\text{doc\_id} \rightarrow \text{length}(d)$$
-  Dùng để tính toán hệ số phạt độ dài phi tuyến trực tiếp cho mô hình BM25.
+Ý tưởng của chỉ mục đảo ngược rất trực quan: thay vì hỏi *"mỗi tài liệu chứa những term nào?"*, hệ thống lưu theo hướng ngược lại: *"mỗi term xuất hiện trong những tài liệu nào?"*.
 
 ---
 
-### 5.2. Thuật toán Lập Chỉ mục Đảo ngược
-Quá trình xây dựng chỉ mục được thực hiện một lần duy nhất ở chế độ ngoại tuyến (Offline). Thuật toán gồm hai giai đoạn chính:
+### 5.1. Cấu trúc dữ liệu cho chỉ mục
 
-#### 5.2.1. Quy trình các bước lập chỉ mục (Indexing Steps):
-* **Các bước tạo từ điển và danh sách posting**:
-  1. Duyệt qua từng tài liệu $doc\_id$ từ tập văn bản gốc, áp dụng pipeline tiền xử lý `TermSelection` để nhận danh sách các token chuẩn hóa (terms).
-  2. Ghi nhận độ dài (số lượng token) của tài liệu vào bảng tra cứu `DocLengths`.
-  3. Sử dụng một cấu trúc đếm (ví dụ: `Counter` hoặc bảng băm) để xác định tần suất thô $f_{t,d}$ của từng term độc bản trong tài liệu.
-  4. Duyệt qua các term độc bản vừa tìm được, thêm cặp dữ liệu `(doc_id, f_td)` vào cuối danh sách postings của `Index[term]`.
-  
-* **Các bước tính toán số liệu và lưu trữ chúng**:
-  1. Tính tổng số tài liệu $N$ và tổng độ dài của toàn bộ tập dữ liệu để suy ra độ dài trung bình tài liệu:
-     $$avgdl = \frac{\sum_{d \in D} |d|}{N}$$
-  2. Duyệt qua mỗi term trong từ điển `Index` để tính toán giá trị Document Frequency ($df_t$), được xác định bằng chính độ dài của postings list của term đó.
-  3. Tính toán và lưu trữ giá trị IDF toàn cục cho từng term:
-     * Với VSM: $IDF(t) = \ln(N / df_t)$
-     * Với BM25: $IDF_{BM25}(t) = \ln((N - df_t + 0.5)/(df_t + 0.5) + 1)$
-  4. **Đối với mô hình VSM**: Tính toán ma trận trọng số TF-IDF cho từng tài liệu dựa trên TF chuẩn hóa và IDF toàn cục, sau đó tính chuẩn Euclid (L2-norm) của vector tài liệu $\|\vec{d}\|_2$. Thực hiện chuẩn hóa L2 trọng số của từ $w_{t,d}' = w_{t,d} / \|\vec{d}\|_2$ và lưu trữ postings list hoàn chỉnh dưới dạng cặp `(doc_id, w_td')`.
-  5. Lưu trữ chỉ mục đảo ngược hoàn chỉnh vào bộ nhớ để phục vụ truy hồi.
+Chỉ mục đảo ngược lưu ánh xạ từ một term đến danh sách các tài liệu chứa term đó:
 
-#### 5.2.2. Lập chỉ mục đảo ngược cho VSM (TF-IDF chuẩn hóa L2)
-```text
-ALGORITHM BuildVSMInvertedIndex(ProcessedDocuments docs, VocabularyIndex vocab_index)
-INPUT: Tập tài liệu docs, Chỉ mục từ vựng vocab_index
-OUTPUT: Chỉ mục đảo ngược VSM chứa trọng số TF-IDF chuẩn hóa L2
+$$\text{term} \rightarrow \{nDoc: df_t,\ \text{postings}: [(doc\_id_1, value_1), (doc\_id_2, value_2), ...]\}$$
 
-1. N ← Số lượng tài liệu trong docs
-2. DF ← Khởi tạo từ điển đếm số tài liệu chứa từ (khởi trị 0)
-3. For each doc_id, tokens in docs:
-       For each unique term t in tokens:
-           DF[t] ← DF[t] + 1
+Ví dụ minh họa:
 
-4. DocumentVectors ← Khởi tạo từ điển rỗng
-5. For each doc_id, tokens in docs:
-       # Tạo vector TF thô
-       tf_vec ← Khởi tạo vector kích thước |vocab_index| toàn giá trị 0
-       For each token in tokens:
-           If token in vocab_index:
-               tf_vec[vocab_index[token]] ← tf_vec[vocab_index[token]] + 1
-       
-       # Chuẩn hóa TF theo độ dài tài liệu
-       tf_vec ← tf_vec / length(tokens)
-       
-       # Nhân thêm IDF toàn cục
-       DocVector ← Khởi tạo vector kích thước |vocab_index| toàn 0
-       For each term in unique(tokens):
-           If term in vocab_index:
-               idx ← vocab_index[term]
-               idf_t ← ln(N / DF[term])
-               DocVector[idx] ← tf_vec[idx] * idf_t
-               
-       # Tính độ dài vector L2 để chuẩn hóa
-       L2_norm ← sqrt(sum(DocVector^2))
-       If L2_norm > 0:
-           DocumentVectors[doc_id] ← DocVector / L2_norm
-       Else:
-           DocumentVectors[doc_id] ← DocVector
+$$\text{flow} \rightarrow [(12, value), (51, value), (184, value), ...]$$
 
-6. VSM_Index ← Khởi tạo từ điển rỗng
-7. For each term, idx in vocab_index:
-       postings_t ← Khởi tạo danh sách rỗng
-       For each doc_id in docs:
-           weight_val ← DocumentVectors[doc_id][idx]
-           If weight_val > 0:
-               Append (doc_id, weight_val) vào postings_t
-       VSM_Index[term] ← {nDoc: DF[term], postings: postings_t}
+Trong đó, `value` phụ thuộc vào mô hình truy xuất:
 
-8. Return VSM_Index
-```
+* Với **VSM**, `value` là trọng số TF-IDF của term trong tài liệu.
+* Với **BM25**, `value` là tần suất thô $f_{t,d}$ của term trong tài liệu.
 
-#### 5.2.3. Lập chỉ mục đảo ngược cho Okapi BM25 (TF thô)
-```text
-ALGORITHM BuildBM25InvertedIndex(ProcessedDocuments docs)
-INPUT: Tập tài liệu đã qua tiền xử lý docs = {doc_id: [tokens...]}
-OUTPUT: Chỉ mục đảo ngược Index, Bảng tra độ dài DocLengths, Bảng tra IDF
+Các thành phần chính của chỉ mục:
 
-1. Index ← Khởi tạo từ điển rỗng (defaultdict(list))
-2. DocLengths ← Khởi tạo từ điển rỗng
-3. IDF ← Khởi tạo từ điển rỗng
-4. TotalLength ← 0
-5. N ← Số lượng tài liệu trong docs
+* $df_t$: số tài liệu chứa term $t$.
+* `postings`: danh sách các tài liệu chứa term.
+* `doc_id`: mã tài liệu trong tập Cranfield.
+* `value`: trọng số hoặc tần suất của term trong tài liệu.
+* `doc_len`: độ dài tài liệu, cần cho BM25.
+* `avgdl`: độ dài trung bình của toàn bộ tập tài liệu, cần cho BM25.
 
-6. For each doc_id, tokens in docs:
-       DocLengths[doc_id] ← Độ dài của tokens
-       TotalLength ← TotalLength + DocLengths[doc_id]
-       
-       TokenFrequencies ← CountFrequencies(tokens) 
-       For each term, frequency in TokenFrequencies:
-           Append (doc_id, frequency) vào Index[term]
-
-7. AvgDocLength ← TotalLength / N
-
-8. For each term, postings in Index:
-       df_t ← Độ dài của postings
-       IDF[term] ← ln((N - df_t + 0.5) / (df_t + 0.5) + 1.0)
-
-9. Return Index, DocLengths, IDF, AvgDocLength
-```
+Nhờ cấu trúc này, khi query chứa các term như `flow`, `wing`, `shock`, hệ thống chỉ cần lấy postings list của các term đó thay vì quét toàn bộ corpus.
 
 ---
 
-### 5.3. Thuật toán xử lý câu truy vấn (Query Processing & Scoring)
-Quá trình xử lý câu truy vấn diễn ra trực tuyến (Online) khi nhận câu truy vấn từ người dùng. Thuật toán được thực hiện qua hai pha tuần tự:
+### 5.2. Thuật toán lập chỉ mục
 
-#### 5.3.1. Quy trình các bước xử lý câu truy vấn:
-* **Xác định tài liệu liên quan (Candidate Document Identification)**:
-  1. Áp dụng tiền xử lý `TermSelection` cho câu truy vấn $Q$ để nhận được danh sách `QueryTokens`.
-  2. Khởi tạo một tập hợp rỗng `CandidateDocuments` chứa các tài liệu ứng viên.
-  3. Duyệt qua từng từ khóa $t \in QueryTokens$:
-     * Tra cứu $t$ trong chỉ mục đảo ngược. Nếu tồn tại, lấy danh sách postings của $t$.
-     * Thêm tất cả các $doc\_id$ xuất hiện trong danh sách postings của $t$ vào tập `CandidateDocuments`.
-  4. Trả về tập `CandidateDocuments` (các tài liệu không chứa bất kỳ từ khóa truy vấn nào đều bị loại bỏ ngay lập tức, tối ưu hóa đáng kể tốc độ truy xuất).
+Lập chỉ mục là pha xử lý offline, được thực hiện trước khi người dùng truy vấn. Mục tiêu của pha này là biến tập tài liệu ban đầu thành các cấu trúc tra cứu nhanh.
 
-* **Tính giá trị xếp hạng (Ranking Computation)**:
-  1. Khởi tạo bảng băm điểm số rỗng `Scores` cho các tài liệu ứng viên.
-  2. Duyệt qua từng từ khóa độc bản trong `QueryTokens`:
-     * Tra cứu postings list của từ khóa trong chỉ mục.
-     * Với mỗi tài liệu ứng viên $doc\_id$ có chứa từ khóa đó, tính đóng góp điểm số (weight contribution):
-       * Đối với VSM: Nhân trọng số TF-IDF của từ khóa trong query với trọng số đã chuẩn hóa L2 của từ khóa trong tài liệu ($w_{t,q} \times w_{t,d}'$), rồi cộng tích lũy vào `Scores[doc_id]`.
-       * Đối với BM25: Nhân giá trị $IDF_{BM25}(t)$ với tỷ số bão hòa tần suất có phạt độ dài của tài liệu, rồi cộng tích lũy vào `Scores[doc_id]`.
-  3. Đối với mô hình VSM, sau khi cộng dồn, chia toàn bộ điểm số trong `Scores[doc_id]` cho độ dài vector câu truy vấn $\|\vec{q}\|_2$ để tính đúng giá trị Cosine Similarity lý thuyết đầy đủ.
-  4. Sắp xếp các tài liệu trong `Scores` theo thứ tự điểm số giảm dần.
-  5. Trả về Top $k$ kết quả cao nhất làm đầu ra của quá trình tìm kiếm.
+#### 5.2.1. Quy trình tổng quát
 
-#### 5.3.2. Truy xuất và tính điểm với mô hình không gian vector (VSM)
 ```text
-ALGORITHM SearchVSM(QueryText Q, VSM_Index, tfidf_matrix, vocab_index, k)
-INPUT: Câu truy vấn Q, chỉ mục đảo ngược VSM, ma trận tfidf của docs, số lượng kết quả k
-OUTPUT: Top k tài liệu có điểm Cosine Similarity cao nhất
-
-1. QueryTokens ← TermSelection(Q, STOP_WORDS, ABBREVIATIONS, STEMMER)
-2. QueryVector ← Vector kích thước |vocab_index| toàn giá trị 0
-3. For each token in QueryTokens:
-       If token in vocab_index:
-           QueryVector[vocab_index[token]] ← QueryVector[vocab_index[token]] + 1
-
-4. QueryVector ← QueryVector / length(QueryTokens) # Chuẩn hóa tần suất
-5. CandidateDocuments ← Khởi tạo tập hợp rỗng
-
-# Bước 1: Nhân thêm IDF (NTC weighting) và tìm tài liệu ứng viên
-6. For each term in unique(QueryTokens):
-       If term in VSM_Index:
-           term_idx ← vocab_index[term]
-           df ← VSM_Index[term]["nDoc"]
-           idf ← ln(N / df)
-           QueryVector[term_idx] ← QueryVector[term_idx] * idf
-           
-           For each doc_id, _ in VSM_Index[term]["postings"]:
-               Thêm doc_id vào CandidateDocuments
-
-# Bước 2: Tính Cosine Similarity giữa câu truy vấn và các tài liệu ứng viên
-7. Similarities ← Khởi tạo danh sách rỗng
-8. For each doc_id in CandidateDocuments:
-       doc_vector ← tfidf_matrix[doc_id - 1] # Vector tài liệu đã được chuẩn hóa L2
-       
-       dot_product ← dot(QueryVector, doc_vector)
-       query_norm ← sqrt(sum(QueryVector^2))
-       doc_norm ← sqrt(sum(doc_vector^2)) # doc_norm luôn bằng 1.0 do chuẩn hóa trước
-       
-       If query_norm > 0 and doc_norm > 0:
-           similarity ← dot_product / (query_norm * doc_norm)
-       Else:
-           similarity ← 0.0
-       Append (doc_id, similarity) vào Similarities
-
-9. SortedResults ← Sắp xếp Similarities theo similarity giảm dần
-10. Return Top k phần tử của SortedResults
+Documents
+   ↓
+Tiền xử lý từng tài liệu
+   ↓
+Xây dựng vocabulary
+   ↓
+Tính TF, DF, IDF
+   ↓
+Tạo chỉ mục VSM và BM25
 ```
 
-#### 5.3.3. Truy xuất và tính điểm với mô hình Okapi BM25
-```text
-ALGORITHM SearchBM25(QueryText Q, Index, DocLengths, IDF, AvgDocLength, k)
-INPUT: Câu truy vấn Q, các cấu trúc chỉ mục đảo ngược, số lượng kết quả cần trả về k
-OUTPUT: Top k tài liệu có điểm số cao nhất
+Thuật toán:
 
-1. QueryTokens ← TermSelection(Q, STOP_WORDS, ABBREVIATIONS, STEMMER)
-2. Scores ← Khởi tạo bảng băm rỗng (defaultdict(float))
+1. Mỗi tài liệu được đưa qua pipeline tiền xử lý để thu được danh sách term chuẩn hóa.
+2. Từ toàn bộ tài liệu, hệ thống xây dựng vocabulary gồm các term độc bản.
+3. Với từng term, hệ thống đếm:
+   * term xuất hiện bao nhiêu lần trong từng tài liệu;
+   * term xuất hiện trong bao nhiêu tài liệu.
+4. Từ các thống kê đó, hệ thống tính các giá trị cần thiết như TF, DF, IDF, độ dài tài liệu và độ dài trung bình.
+5. Cuối cùng, hệ thống tạo postings list cho từng term.
 
-3. For each term in QueryTokens:
-       If term NOT in Index:
-           Continue
-       
-       idf_t ← IDF[term]
-       If idf_t ≤ 0: # Bỏ qua từ quá phổ biến
-           Continue
-           
-       For each doc_id, f in Index[term]:
-           dl ← DocLengths[doc_id]
-           numerator ← f * (k1 + 1)
-           denominator ← f + k1 * (1 - b + b * dl / AvgDocLength)
-           term_score ← idf_t * (numerator / denominator)
-           
-           Scores[doc_id] ← Scores[doc_id] + term_score
+#### 5.2.2. Chỉ mục cho VSM
 
-4. SortedResults ← Sắp xếp các cặp (doc_id, score) trong Scores theo score giảm dần
-5. Return Top k phần tử của SortedResults
-```
+Với VSM, mỗi tài liệu được biểu diễn bằng vector TF-IDF. Trọng số của term $t$ trong tài liệu $d$ là:
+
+$$w_{t,d} = \frac{tf_{t,d}}{|d|} \times \ln\left(\frac{N}{df_t}\right)$$
+
+Chỉ mục VSM lưu các term có trọng số khác 0:
+
+$$t \rightarrow [(doc\_id, w_{t,d}), ...]$$
+
+Ý nghĩa: nếu term `wing` xuất hiện trong tài liệu 51 với trọng số TF-IDF là $w_{\text{wing},51}$, postings list của `wing` sẽ chứa cặp:
+
+$$({51}, w_{\text{wing},51})$$
+
+Khi truy vấn, các trọng số này được dùng để tính Cosine Similarity giữa query vector và document vector.
+
+#### 5.2.3. Chỉ mục cho BM25
+
+Với BM25, hệ thống không cần lưu trọng số TF-IDF. Thay vào đó, postings list lưu tần suất thô của term trong từng tài liệu:
+
+$$t \rightarrow [(doc\_id, f_{t,d}), ...]$$
+
+Ngoài postings list, BM25 cần thêm độ dài tài liệu và độ dài trung bình:
+
+$$\text{doc\_len}[d] = |d|$$
+
+$$avgdl = \frac{\sum_{d \in D}|d|}{N}$$
+
+$$IDF_{BM25}(t) = \ln\left(\frac{N - df_t + 0.5}{df_t + 0.5} + 1\right)$$
+
+Những thông tin này giúp BM25 vừa xét mức độ xuất hiện của term trong tài liệu, vừa điều chỉnh ảnh hưởng của tài liệu quá dài.
 
 ---
 
-## 6. Thử nghiệm, Đánh giá Hiệu năng và Hai phần Bonus
+### 5.3. Thuật toán xử lý câu truy vấn
+
+Xử lý truy vấn là pha online, diễn ra khi người dùng nhập câu truy vấn. Điểm quan trọng là query phải được tiền xử lý bằng cùng pipeline với tài liệu, để các term trong query và trong chỉ mục có cùng dạng biểu diễn.
+
+#### 5.3.1. Quy trình chung
+
+```text
+Query thô
+   ↓
+Tiền xử lý query
+   ↓
+Tra cứu postings list
+   ↓
+Tạo tập tài liệu ứng viên
+   ↓
+Tính điểm VSM hoặc BM25
+   ↓
+Sắp xếp giảm dần theo score
+   ↓
+Trả về top-k tài liệu
+```
+
+Thuật toán xử lý query:
+
+1. Tiền xử lý query để thu được các term chuẩn hóa.
+2. Với mỗi term trong query, lấy postings list tương ứng từ chỉ mục đảo ngược.
+3. Hợp các tài liệu trong các postings list để tạo tập tài liệu ứng viên.
+4. Tính điểm cho từng tài liệu ứng viên bằng VSM hoặc BM25.
+5. Sắp xếp tài liệu theo điểm giảm dần và trả về top-k.
+
+Ví dụ, nếu query sau xử lý có các term:
+
+$$q = \{\text{aeroelast}, \text{model}, \text{heat}, \text{aircraft}\}$$
+
+hệ thống sẽ lấy postings list của bốn term này, tạo danh sách tài liệu ứng viên, sau đó tính điểm xếp hạng cho từng tài liệu.
+
+#### 5.3.2. Tính điểm với VSM
+
+Với VSM, query cũng được biểu diễn thành vector TF-IDF:
+
+$$w_{t,q} = \frac{tf_{t,q}}{|q|} \times \ln\left(\frac{N}{df_t}\right)$$
+
+Mỗi tài liệu ứng viên đã có vector TF-IDF từ pha lập chỉ mục. Hệ thống tính độ tương đồng bằng Cosine Similarity:
+
+$$\text{score}_{\text{VSM}}(q,d) = \frac{\sum_{t \in q \cap d} w_{t,q} \cdot w_{t,d}}{\|\vec{q}\|_2 \cdot \|\vec{d}\|_2}$$
+
+Tài liệu nào có vector gần hướng với query vector hơn sẽ có điểm cao hơn và được xếp hạng cao hơn.
+
+#### 5.3.3. Tính điểm với BM25
+
+Với BM25, hệ thống không so sánh vector bằng góc như VSM. Thay vào đó, mỗi term trong query đóng góp một lượng điểm vào tài liệu chứa nó:
+
+$$\text{score}_{\text{BM25}}(d,q) = \sum_{t \in q \cap d} IDF_{BM25}(t) \cdot \frac{f_{t,d}(k_1+1)}{f_{t,d} + k_1\left(1-b+b\cdot\frac{|d|}{avgdl}\right)}$$
+
+Trong thực nghiệm, hệ thống sử dụng:
+
+* $k_1 = 2.0$
+* $b = 0.6$
+* $avgdl = 95.58$
+
+Tài liệu có nhiều term truy vấn quan trọng, tần suất hợp lý và độ dài không quá lệch so với trung bình sẽ có điểm BM25 cao hơn.
+
+---
+
+## 6. Thử nghiệm và Đánh giá Hiệu năng
 
 Hệ thống được đánh giá bằng phương pháp kiểm thử toàn diện trên toàn bộ **225 câu truy vấn** của tập Cranfield. Các mô hình đều dùng chung pipeline tiền xử lý, cùng tập relevance judgments và cùng bộ chỉ số: **MAP**, **Precision@20 (P@20)** và **Recall@20 (R@20)**.
 
-### 6.1. Phần Bonus 1: KMeans Cluster-based Reranking
+### 6.1. Kết quả baseline trước khi cải tiến
 
-#### 6.1.1. Động lực cải tiến
-Các mô hình VSM và BM25 chủ yếu dựa trên mức độ trùng khớp từ khóa giữa câu truy vấn và tài liệu. Cách tiếp cận này mạnh với các truy vấn chứa thuật ngữ đặc thù, nhưng có thể bỏ sót các tài liệu liên quan cùng chủ đề nếu chúng diễn đạt bằng bộ từ hơi khác. Vì vậy, phần bonus thứ nhất bổ sung một bước **reranking dựa trên cụm tài liệu** nhằm khai thác tín hiệu chủ đề ở mức corpus.
+Bảng dưới đây là kết quả của hai mô hình chính trước khi áp dụng các phần mở rộng/cải tiến:
 
-Ý tưởng chính: nếu nhiều tài liệu trong top đầu của ranking ban đầu cùng thuộc một cụm, cụm đó có khả năng đại diện cho chủ đề liên quan đến query. Các tài liệu khác trong cùng cụm sẽ được tăng điểm nhẹ để cải thiện độ phủ chủ đề mà không phá vỡ hoàn toàn ranking gốc.
+| Mô hình | MAP | P@20 | R@20 |
+|---|:---:|:---:|:---:|
+| VSM Baseline | 0.2923 | 0.1573 | 0.5048 |
+| BM25 Baseline | 0.3118 | 0.1622 | 0.5182 |
 
-#### 6.1.2. Quy trình offline: xây dựng không gian cụm
-Trước khi truy vấn, hệ thống xây dựng không gian biểu diễn tài liệu để phân cụm:
+**Nhận xét:** BM25 tốt hơn VSM ở cả ba metric. Điều này phù hợp với kỳ vọng vì BM25 có cơ chế bão hòa tần suất và chuẩn hóa độ dài tài liệu, trong khi VSM chủ yếu dựa trên cosine similarity của vector TF-IDF.
+
+---
+
+## 7. Phân tích lỗi và trường hợp truy vấn
+Để phần phân tích không chỉ dừng ở nhận xét cảm tính, nhóm kiểm tra từng query bằng dữ liệu thật từ `evaluation_per_query.csv`, `query_bm25.csv`, `TEST/query.txt` và relevance judgments trong `TEST/RES`. Script kiểm chứng được lưu tại `analyze_query_cases.py`, kết quả chi tiết nằm trong `docs/query_case_evidence.md`.
+
+Cách phân tích mỗi query:
+
+1. Xem AP, P@20, Recall@20 để biết query tốt hay kém.
+2. Kiểm tra top tài liệu hệ thống trả về có nằm trong tập relevance hay không.
+3. Xem các term nào đóng góp điểm BM25 lớn nhất.
+4. Từ đó xác định nguyên nhân: term đặc thù, term nhiễu, mismatch từ vựng, hay mất thông tin cụm từ.
+
+---
+
+### 7.1. Trường hợp truy vấn tốt
+
+Các query tốt thường có term chuyên ngành rõ và khớp trực tiếp với tài liệu liên quan.
+
+Lưu ý: hệ thống vẫn xếp hạng trên toàn bộ **1.400 tài liệu**. Cột "Relevant docs" là số tài liệu thật sự liên quan trong ground truth (`TEST/RES`), không phải số tài liệu hệ thống retrieve.
+
+| Query ID | Nội dung rút gọn | Relevant docs | AP BM25 | Bằng chứng |
+|---:|---|---:|---:|---|
+| 119 | `axisymmetric deviations`, `load-deflection`, `hydrostatic pressure` | 1 | 1.0000 | Doc đúng đứng rank 1 |
+| 150 | `wing-body interference`, `supersonic mach number` | 2 | 1.0000 | Hai doc đúng đứng rank 1 và 2 |
+| 41 | `vortex wake`, `cruciform wing` | 3 | 0.8667 | Hai doc đúng nằm ngay rank 1 và 2 |
+
+#### Case tốt: Query 150
+
+Query:
+
+```text
+what is the magnitude of second-order wing-body interference at high supersonic mach number
+```
+
+Kết quả BM25 top đầu:
+
+| Rank | Doc ID | BM25 score | Relevant? |
+|---:|---:|---:|:---:|
+| 1 | 1074 | 29.1695 | Yes |
+| 2 | 1075 | 27.0222 | Yes |
+| 3 | 1062 | 26.9908 | No |
+
+Các term đóng góp mạnh ở rank 1:
+
+| Term | TF | IDF BM25 | Term score |
+|---|---:|---:|---:|
+| `interfer` | 3 | 3.4055 | 6.0929 |
+| `second` | 4 | 2.5399 | 5.0543 |
+| `order` | 5 | 1.9592 | 4.1802 |
+| `wing` | 5 | 1.8222 | 3.8878 |
+
+Trích đoạn đối chiếu:
+
+| Doc | Relevant? | Trích đoạn nội dung |
+|---:|:---:|---|
+| 1074 | Yes | theoretical and experimental investigation of **second order supersonic wing body interference** ... approximate **second order** solutions for the **supersonic** flow around **wing body** combinations ... |
+| 1075 | Yes | an experimental and theoretical investigation of **second order supersonic wing body interference** ... pressure distributions on the **wing** ... at **mach numbers 3 and 4** ... |
+
+**Phân tích:** Query 150 là case dễ cho BM25 vì cụm trong query xuất hiện gần như nguyên vẹn trong hai tài liệu đúng: **second order supersonic wing body interference**. Các term có điểm cao như `interfer`, `second`, `order`, `wing` đều nằm trong cùng ngữ cảnh, không phải chỉ khớp rời rạc. Vì vậy hai tài liệu relevant được đưa lên rank 1 và rank 2, làm AP BM25 đạt 1.0000.
+
+---
+
+### 7.2. Trường hợp truy vấn kém
+
+Query kém không phải lúc nào cũng do thiếu từ khóa. Nhiều query vẫn có term rất mạnh, nhưng hệ thống có thể chọn nhầm nếu tài liệu chỉ trùng từ khóa mà không trả lời đúng ý của truy vấn.
+
+| Query ID | Nội dung rút gọn | Relevant docs | AP BM25 | Hiện tượng |
+|---:|---|---:|---:|---|
+| 13 | `transonic aileron buzz` | 4 | 0.0000 | Term đúng chủ đề nhưng top docs đều không relevant |
+| 87 | `boundary layer`, `inviscid flow`, `shock` | 8 | 0.0000 | Nhiều term phổ biến trong Cranfield, dễ nhiễu |
+| 109 | `panels`, `aerodynamic heating` | 5 | 0.0000 | Query ngắn, ít tín hiệu phân biệt |
+
+#### Case lỗi: Query 13
+
+Query:
+
+```text
+what is the basic mechanism of the transonic aileron buzz
+```
+
+Kết quả BM25 top đầu:
+
+| Rank | Doc ID | BM25 score | Relevant? |
+|---:|---:|---:|:---:|
+| 1 | 496 | 26.7918 | No |
+| 2 | 903 | 15.7377 | No |
+| 3 | 520 | 12.6100 | No |
+| 4 | 643 | 11.0287 | No |
+| 5 | 199 | 10.8414 | No |
+
+Các term đóng góp mạnh ở rank 1:
+
+| Term | TF | IDF BM25 | Term score |
+|---|---:|---:|---:|
+| `buzz` | 2 | 6.8395 | 11.1931 |
+| `aileron` | 3 | 4.9936 | 9.6314 |
+| `transon` | 3 | 3.0939 | 5.9673 |
+
+Trích đoạn đối chiếu:
+
+| Doc | Relevant? | Trích đoạn nội dung |
+|---:|:---:|---|
+| 496 | No | a theory of **transonic aileron buzz**, neglecting viscous effects ... harmonic oscillations of an **aileron** ... stability boundary for **transonic aileron buzz** ... |
+| 265 | Yes | instabilities arising from the interaction between **shock waves** and **boundary layer** ... oscillatory behaviour of aerofoils and **control surfaces** ... shock induced separation in the instability of a **control surface** ... |
+
+Doc 496 được BM25 cho điểm rất cao vì khớp trực tiếp các term mạnh: **buzz**, **aileron**, **transon**. Tuy nhiên, theo ground truth, Doc 496 không được đánh dấu relevant cho query 13.
+
+**Phân tích:** Query 13 hỏi về **basic mechanism** của hiện tượng **transonic aileron buzz**, tức là muốn tìm tài liệu giải thích cơ chế gây ra hiện tượng này. Doc 496 lại tập trung vào việc xây dựng **a theory of transonic aileron buzz**, mô hình hóa dao động của **aileron**, và đưa ra stability boundary. Vì Doc 496 lặp lại trực tiếp các term mạnh như `buzz`, `aileron`, `transon`, BM25 cho điểm rất cao và xếp hạng 1. Tuy nhiên, theo ground truth, Doc 496 không được xem là tài liệu relevant cho query này. Đây là lỗi do BM25 ưu tiên khớp từ khóa bề mặt, trong khi query cần đúng khía cạnh **cơ chế nền** của hiện tượng.
+
+#### Case lỗi: Query 87
+
+Query:
+
+```text
+what effect has the boundary layer in modifying the basic inviscid flow behind the shock
+```
+
+Các term đóng góp mạnh ở rank 1:
+
+| Term | TF | IDF BM25 | Term score |
+|---|---:|---:|---:|
+| `corner` | 2 | 4.3827 | 7.0281 |
+| `lead` | 4 | 2.0830 | 4.3535 |
+| `edg` | 4 | 2.0058 | 4.1922 |
+| `shock` | 3 | 1.7622 | 3.3449 |
+
+Trích đoạn tài liệu rank 1:
+
+| Doc | Relevant? | Trích đoạn nội dung |
+|---:|:---:|---|
+| 1228 | No | **leading edge** separation of laminar boundary layers in supersonic flow ... interaction of **shock wave** and laminar boundary layer on a compression **corner** ... compression **corner** angle ... |
+
+**Phân tích:** Query 87 có một điều kiện quan trọng: nó hỏi ảnh hưởng của **boundary layer** phía sau **shock**, nhưng đồng thời nói **neglecting effects of leading edge and corner** (bỏ qua ảnh hưởng của cạnh trước và góc). Doc 1228 lại tập trung vào **leading edge separation** và **compression corner**. Vì BM25 tính điểm theo các term riêng lẻ, những từ như `corner`, `lead`, `edg`, `shock` vẫn tạo điểm cao, mặc dù chính phần **leading edge/corner** là thứ query muốn bỏ qua. Đây là lỗi do mô hình không giữ được ràng buộc phủ định/điều kiện trong câu truy vấn.
+
+---
+
+### 7.3. Bài học rút ra
+
+Từ các case trên, có thể rút ra ba nhóm lỗi chính:
+
+* **False positive do term mạnh**: query 13 cho thấy tài liệu có thể chứa term hiếm như `buzz`, `aileron` nhưng vẫn không đúng nhu cầu truy vấn.
+* **Nhiễu do term phổ biến**: query 87 cho thấy các term như `flow`, `shock`, `boundary` dễ xuất hiện trong nhiều tài liệu, làm ranking bị nhiễu.
+* **Mất thông tin cụm từ**: các cụm như `boundary layer`, `skin friction`, `aileron buzz` có ý nghĩa mạnh hơn từng từ riêng lẻ, nhưng hệ thống hiện chủ yếu xử lý theo unigram.
+
+Hướng cải thiện:
+
+* Thêm phrase matching cho các cụm chuyên ngành.
+* Dùng query expansion hoặc pseudo relevance feedback để bổ sung term đặc trưng.
+* Kết hợp tín hiệu chủ đề như Cluster Reranking để giảm phụ thuộc hoàn toàn vào term matching.
+
+---
+
+## 8. Hai phần mở rộng
+
+### 8.1. Phần mở rộng 1: KMeans Cluster-based Reranking
+
+#### 9.1.1. Động lực cải tiến
+VSM và BM25 xếp hạng chủ yếu dựa trên term matching. Để bổ sung tín hiệu chủ đề, hệ thống thêm bước **Cluster Reranking** sau ranking ban đầu.
+
+Ý tưởng: nếu nhiều tài liệu top đầu cùng thuộc một cụm, cụm đó được xem là có liên quan đến query và các tài liệu trong cụm sẽ được boost nhẹ.
+
+#### 9.1.2. Quy trình offline: xây dựng không gian cụm
+Trước khi truy vấn, toàn bộ tài liệu được biểu diễn và phân cụm một lần:
 
 ```text
 Processed Cranfield Documents
@@ -480,21 +620,10 @@ KMeans Clustering với 200 clusters
 doc_to_cluster và cluster_to_docs
 ```
 
-Cấu hình thực nghiệm:
+Cấu hình chính: TF-IDF được giảm chiều bằng TruncatedSVD xuống 100 chiều, sau đó chuẩn hóa L2 và phân cụm bằng KMeans với **200 cụm**. Mỗi cụm đại diện cho một nhóm tài liệu có chủ đề gần nhau.
 
-| Thành phần | Giá trị | Mục đích |
-|---|:---:|---|
-| Số tài liệu | 1.400 | Toàn bộ Cranfield collection |
-| Không gian đầu vào | TF-IDF | Biểu diễn từ khóa đã chuẩn hóa |
-| Giảm chiều | TruncatedSVD 100D | Tạo LSA space, giảm nhiễu và sparsity |
-| Chuẩn hóa | L2 normalization | Giúp KMeans ổn định hơn |
-| Thuật toán cụm | KMeans | Gom tài liệu theo micro-topic |
-| Số cụm | 200 | Trung bình khoảng 7 tài liệu/cụm |
-
-Việc chọn **200 cụm** tạo ra các cụm nhỏ kiểu *micro-topic*. Điều này phù hợp với Cranfield vì các tài liệu thường xoay quanh nhiều chủ đề khí động học hẹp như boundary layer, shock wave, heat transfer, supersonic flow,...
-
-#### 6.1.3. Quy trình online: reranking theo cụm
-Với mỗi query, hệ thống thực hiện:
+#### 9.1.3. Quy trình online: reranking theo cụm
+Khi có query, hệ thống dùng ranking ban đầu của VSM/BM25 để xác định cụm nào đang quan trọng:
 
 ```text
 Query
@@ -520,9 +649,39 @@ Trong đó:
 
 * $\text{norm\_score}[d] = \frac{\text{retrieval\_score}[d]}{\max(\text{retrieval\_score})}$ là điểm truy hồi gốc đã chuẩn hóa.
 * $\text{cluster\_score}[\text{cluster}(d)]$ là mức độ quan trọng của cụm chứa tài liệu $d$ dựa trên voting từ top-20.
-* $\alpha = 0.85$ giúp ranking gốc vẫn giữ vai trò chính, cluster chỉ đóng vai trò boost nhẹ.
+* $\alpha = 0.85$ giữ ranking gốc làm tín hiệu chính, cluster chỉ đóng vai trò boost nhẹ.
 
-#### 6.1.4. Kết quả của Cluster Reranking
+Minh họa nhanh với ranking ban đầu:
+
+| Hạng ban đầu | Tài liệu | Retrieval score chuẩn hóa | Cluster |
+|---:|---:|---:|---:|
+| 1 | 51 | 1.00 | C2 |
+| 2 | 184 | 0.82 | C2 |
+| 3 | 12 | 0.76 | C5 |
+| 4 | 486 | 0.70 | C2 |
+| 5 | 359 | 0.68 | C9 |
+
+Giả sử hệ thống dùng top-3 tài liệu đầu để xác định cụm quan trọng. Trong top-3, cụm C2 xuất hiện 2 lần, cụm C5 xuất hiện 1 lần. Do đó:
+
+$$\text{cluster\_score}[C2] = 1.0,\quad \text{cluster\_score}[C5] = 0.5$$
+
+Nếu một tài liệu khác thuộc cụm C2 có retrieval score đã chuẩn hóa là 0.70, điểm sau reranking là:
+
+$$\text{final\_score} = 0.85 \times 0.70 + 0.15 \times 1.0 = 0.745$$
+
+Khi áp dụng cho thêm một vài tài liệu ứng viên:
+
+| Tài liệu | Retrieval score chuẩn hóa | Cluster | Cluster score | Final score | Thứ hạng sau rerank |
+|---:|---:|---:|---:|---:|---:|
+| 51 | 1.00 | C2 | 1.00 | 1.000 | 1 |
+| 184 | 0.82 | C2 | 1.00 | 0.847 | 2 |
+| 12 | 0.76 | C5 | 0.50 | 0.721 | 4 |
+| 486 | 0.70 | C2 | 1.00 | 0.745 | 3 |
+| 359 | 0.68 | C9 | 0.00 | 0.578 | 5 |
+
+Ở ranking gốc, tài liệu 486 đứng sau tài liệu 12. Sau reranking, 486 được tăng điểm vì thuộc cụm C2, là cụm xuất hiện nhiều trong top đầu, nên vượt lên trên tài liệu 12. Ngược lại, tài liệu 359 không thuộc cụm quan trọng nên không được boost.
+
+#### 9.1.4. Kết quả của Cluster Reranking
 
 | Model | MAP | P@20 | R@20 |
 |---|:---:|:---:|:---:|
@@ -538,14 +697,23 @@ Mức cải thiện:
 | VSM + Cluster so với VSM | +4.17% | +5.53% | +5.09% |
 | BM25 + Cluster so với BM25 | +5.74% | +6.04% | +6.13% |
 
-**Nhận xét:** Cluster Reranking cải thiện đồng loạt cả ba metric cho cả VSM và BM25. Kết quả tốt nhất là **BM25 + Cluster Reranking** với MAP = **0.3297** và R@20 = **0.5500**. Điều này cho thấy tín hiệu cụm giúp hệ thống tìm thêm tài liệu liên quan trong top-20, đặc biệt ở các query có nhiều tài liệu cùng micro-topic.
+**Nhận xét:** Cluster Reranking cải thiện đồng loạt cả ba metric cho cả VSM và BM25. Kết quả tốt nhất là **BM25 + Cluster Reranking** với MAP = **0.3297** và R@20 = **0.5500**.
+
+Phân tích kết quả:
+
+* **MAP tăng** cho thấy reranking không chỉ đưa thêm tài liệu liên quan vào danh sách, mà còn cải thiện vị trí của chúng trong ranking. Nói cách khác, một số tài liệu đúng được đẩy lên sớm hơn.
+* **P@20 tăng** cho thấy trong 20 kết quả đầu có nhiều tài liệu liên quan hơn. Điều này phù hợp với cơ chế cluster boost: các tài liệu cùng cụm với nhóm top đầu có thêm cơ hội được đưa vào top-20.
+* **R@20 tăng** cho thấy hệ thống tìm được thêm tài liệu liên quan mà baseline VSM/BM25 ban đầu chưa ưu tiên đủ cao.
+* **BM25 + Cluster tốt nhất** vì BM25 đã là baseline mạnh hơn VSM; khi thêm tín hiệu cụm, mô hình vừa giữ được khả năng term matching tốt, vừa bổ sung thêm tín hiệu chủ đề.
+
+Tuy nhiên, cluster chỉ được dùng như tín hiệu phụ với $\alpha = 0.85$, nên ranking gốc vẫn chiếm vai trò chính. Điều này giúp hạn chế rủi ro đẩy quá nhiều tài liệu cùng cụm nhưng không thật sự liên quan lên đầu danh sách.
 
 ---
 
-### 6.2. Phần Bonus 2: So sánh với Whoosh BM25F Baseline
+### 8.2. Phần mở rộng 2: So sánh với Whoosh BM25F Baseline
 
-#### 6.2.1. Mục tiêu so sánh
-Phần bonus thứ hai dùng thư viện **Whoosh** để xây dựng một baseline bên ngoài. Mục tiêu không phải thay thế mô hình thủ công, mà là dùng một thư viện IR có sẵn để kiểm chứng chất lượng tương đối của pipeline tự cài đặt.
+#### 9.2.1. Mục tiêu so sánh
+Phần mở rộng thứ hai dùng thư viện **Whoosh** để xây dựng một baseline bên ngoài. Mục tiêu không phải thay thế mô hình thủ công, mà là dùng một thư viện IR có sẵn để kiểm chứng chất lượng tương đối của pipeline tự cài đặt.
 
 Để so sánh công bằng, Whoosh được chạy trên cùng:
 
@@ -555,7 +723,7 @@ Phần bonus thứ hai dùng thư viện **Whoosh** để xây dựng một base
 * Bộ metric MAP, P@20, R@20.
 * Pipeline tiền xử lý của dự án.
 
-#### 6.2.2. Tiền xử lý dùng cho Whoosh
+#### 9.2.2. Tiền xử lý dùng cho Whoosh
 Thay vì dùng analyzer mặc định của Whoosh, hệ thống đưa documents và queries qua lại **cùng hàm `process_document`** đã dùng cho VSM/BM25 thủ công:
 
 ```text
@@ -580,7 +748,7 @@ chuỗi token đã chuẩn hóa dùng cho Whoosh index/search
 
 Trong Whoosh, trường nội dung dùng `KeywordAnalyzer()` để tránh việc Whoosh tokenize hoặc stem lại lần nữa. Như vậy, dữ liệu đưa vào Whoosh đã ở cùng không gian term với mô hình VSM/BM25 của dự án.
 
-#### 6.2.3. Cấu hình Whoosh
+#### 9.2.3. Cấu hình Whoosh
 
 | Thành phần | Cấu hình |
 |---|---|
@@ -594,7 +762,7 @@ Trong Whoosh, trường nội dung dùng `KeywordAnalyzer()` để tránh việc
 
 `OrGroup` được dùng để query hoạt động theo hướng OR giữa các term đã xử lý. Điều này gần với cách hệ thống thủ công dùng chỉ mục đảo ngược để cộng điểm các tài liệu chứa ít nhất một term của query.
 
-#### 6.2.4. Kết quả so sánh với Whoosh
+#### 9.2.4. Kết quả so sánh với Whoosh
 
 | Model | MAP | P@20 | R@20 |
 |---|:---:|:---:|:---:|
@@ -604,7 +772,7 @@ Trong Whoosh, trường nội dung dùng `KeywordAnalyzer()` để tránh việc
 | **BM25 + Cluster Reranking** | **0.3297** | **0.1720** | **0.5500** |
 | Whoosh BM25F Baseline | 0.3030 | 0.1607 | 0.5123 |
 
-#### 6.2.5. Phân tích kết quả Whoosh
+#### 9.2.5. Phân tích kết quả Whoosh
 Kết quả Whoosh BM25F đạt **MAP = 0.3030**, cao hơn VSM Baseline và gần với VSM + Cluster Reranking, nhưng vẫn thấp hơn BM25 thủ công và BM25 + Cluster Reranking.
 
 Điều này cho thấy:
@@ -615,7 +783,7 @@ Kết quả Whoosh BM25F đạt **MAP = 0.3030**, cao hơn VSM Baseline và gầ
 
 ---
 
-### 6.3. Tổng kết phần thực nghiệm
+### 8.3. Tổng kết phần thực nghiệm
 
 | Hạng | Mô hình | MAP | Nhận xét ngắn |
 |:---:|---|:---:|---|
@@ -625,17 +793,20 @@ Kết quả Whoosh BM25F đạt **MAP = 0.3030**, cao hơn VSM Baseline và gầ
 | 4 | Whoosh BM25F Baseline | 0.3030 | Baseline thư viện tốt, nhưng chưa vượt BM25 thủ công |
 | 5 | VSM Baseline | 0.2923 | Mô hình nền đơn giản nhất |
 
-Hai phần bonus cho thấy hướng cải tiến có ý nghĩa:
+Hai phần mở rộng cho thấy hướng cải tiến có ý nghĩa:
 
 1. **KMeans Cluster Reranking** cải thiện chất lượng truy hồi bằng tín hiệu chủ đề ở cấp cụm.
 2. **Whoosh BM25F** cung cấp baseline thư viện để đối chiếu, chứng minh pipeline thủ công đạt chất lượng cạnh tranh và có thể vượt baseline tổng quát khi được tuning theo Cranfield.
 
 ---
 
-## 7. Minh họa Tính toán Chạy tay trên Query 1
+---
+
+
+## 9. Phụ lục Optional: Minh họa Tính toán Chạy tay trên Query 1
 Để làm sáng tỏ quy trình vận hành chi tiết của hệ thống, dưới đây là phần phân tích từng bước tính toán đối với **Query 1**:
 
-### 7.1. Chạy tay Pipeline Tiền xử lý (Query 1)
+### 9.1. Chạy tay Pipeline Tiền xử lý (Query 1)
 * **Câu gốc**: `"what similarity laws must be obeyed when constructing aeroelastic models of heated high speed aircraft ."`
 * **Chuyển chữ thường & Loại ký tự đặc biệt**: `"what similarity laws must be obeyed when constructing aeroelastic models of heated high speed aircraft"`
 * **Tách từ (Tokenize)**: `['what', 'similarity', 'laws', 'must', 'be', 'obeyed', 'when', 'constructing', 'aeroelastic', 'models', 'of', 'heated', 'high', 'speed', 'aircraft']`
@@ -657,7 +828,7 @@ Hai phần bonus cho thấy hướng cải tiến có ý nghĩa:
 
 ---
 
-### 7.2. Kết quả Xếp hạng và Điểm số Top 5 (Query 1)
+### 9.2. Kết quả Xếp hạng và Điểm số Top 5 (Query 1)
 
 #### Kết quả với mô hình Vector Space Model (VSM):
 Bảng phân rã Cosine Similarity của các tài liệu hàng đầu cho thấy mức độ đóng góp điểm số chủ yếu đến từ các từ khóa hiếm có giá trị IDF cao như `aeroelast` (IDF = 4.09), `obey` (IDF = 4.85):
@@ -677,7 +848,7 @@ Mô hình BM25 đạt điểm số vượt trội do bão hòa tần suất củ
 
 ---
 
-### 7.3. Chạy tay đánh giá độ chính xác (Evaluation) cho Query 1 với k=5
+### 9.3. Chạy tay đánh giá độ chính xác (Evaluation) cho Query 1 với k=5
 * **Tập tài liệu thực sự liên quan (Relevance Judgments)**: $R_{q_1}$ gồm **28 tài liệu** (trong đó có các tài liệu số `12, 51, 184, ...`).
 * **Danh sách tài liệu hệ thống VSM trả về (Top 5)**: `[51, 184, 12, 359, 746]`
 * **Số tài liệu khớp đúng (Hits trong Top 5)**: Tài liệu `51` (đúng), `184` (đúng), `12` (đúng). Tài liệu `359` và `746` là sai. Tổng cộng có **3 tài liệu đúng**.
@@ -699,19 +870,3 @@ Xét lần lượt từng vị trí từ $i=1$ đến $5$:
 $$\text{AP}(q_1) = \frac{1.0000 + 1.0000 + 1.0000}{|R_{q_1}|} = \frac{3.0000}{28} \approx 0.1071$$
 
 ---
-
-## 8. Phân tích các trường hợp truy vấn Tốt nhất và Kém nhất
-Dựa trên tệp thống kê hiệu năng chi tiết của từng truy vấn (`evaluation_per_query.csv`), chúng tôi phân tích nguyên nhân tạo nên sự chênh lệch lớn giữa các nhóm kết quả:
-
-### 8.1. Các truy vấn có kết quả Tốt nhất (AP ≈ 1.0)
-* **Đặc trưng**: Câu truy vấn chứa các thuật ngữ khí động học đặc thù, rất hiếm gặp trên toàn hệ thống (IDF cực lớn) như `photoelasticity`, `buckling`, `supersonic nozzle`.
-* **Lý do thành công**:
-  * Các từ khóa này chỉ xuất hiện trong một số rất ít tài liệu cụ thể. Mô hình chỉ mục đảo ngược lập tức loại bỏ hầu hết các tài liệu không liên quan, đưa các tài liệu chứa từ khóa này lên top đầu với điểm số áp đảo.
-  * Sự trùng khớp từ khóa hiếm mang lại tín hiệu ngữ nghĩa cực kỳ mạnh mẽ, không bị ảnh hưởng bởi độ dài hay tần suất của các từ thông thường.
-
-### 8.2. Các truy vấn có kết quả Kém nhất (AP ≈ 0.0)
-* **Đặc trưng**: Câu truy vấn có xu hướng ngắn và sử dụng các từ ngữ chung chung như `boundary layer theory`, `experimental research`, `high speed flow`.
-* **Lý do thất bại**:
-  * **Sự mơ hồ về ngữ nghĩa (Semantic Ambiguity)**: Các từ khóa như `layer`, `flow`, `speed` xuất hiện ở hàng trăm tài liệu khác nhau trong tập Cranfield (DF lớn, IDF nhỏ), dẫn đến việc tính điểm bị phân tán và nhiễu.
-  * **Thiếu từ khóa đặc trưng (Vocabulary Mismatch)**: Tài liệu liên quan thực sự có thể viết về các khía cạnh hẹp cụ thể như `viscous fluid flow`, `Prandtl number` (IDF lớn) nhưng không chứa từ khóa chung chung `speed` hay `research` mà người dùng nhập vào.
-  * **Giải pháp khắc phục**: Cần áp dụng kỹ thuật mở rộng câu truy vấn (Query Expansion) bằng cách sử dụng các từ điển đồng nghĩa hoặc phản hồi liên quan giả định (Pseudo Relevance Feedback) để bổ sung thêm các term đặc trưng ngữ nghĩa.
